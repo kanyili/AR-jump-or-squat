@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>雙人 AR 反應速度遊戲</title>
     <style>
+        /* 集中管理樣式變數：在此處調整配色與視覺主題 */
+        :root {
+            --bg-color: #0b0f19;          /* 背景主色 */
+            --primary-color: #00f3ff;     /* 主要科技藍色 */
+            --success-color: #00ffcc;     /* 成功/得分顏色 */
+            --danger-color: #ff0055;      /* 錯誤/指令警示顏色 */
+            --warning-color: #ffaa00;     /* 準備階段黃色 */
+            --text-color: #ffffff;        /* 文字預設白色 */
+            --hud-bg: rgba(11, 15, 25, 0.4); /* 中央控制區透明背景 */
+            --border-glow: rgba(0, 243, 255, 0.2); /* 邊框光暈顏色 */
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -17,10 +29,11 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #0b0f19;
-            color: #ffffff;
+            background-color: var(--bg-color);
+            color: var(--text-color);
         }
 
+        /* 螢幕直向警告畫面 */
         #rotate-warning {
             display: none;
             position: fixed;
@@ -62,6 +75,7 @@
             overflow: hidden;
         }
 
+        /* 視訊鏡頭畫面（水平鏡射） */
         #webcam-video {
             position: absolute;
             top: 0;
@@ -73,6 +87,7 @@
             z-index: 1;
         }
 
+        /* 骨架繪製畫布 */
         #game-canvas {
             position: absolute;
             top: 0;
@@ -84,6 +99,7 @@
             transform: scaleX(-1);
         }
 
+        /* 遊戲 UI 介面層 */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -100,6 +116,7 @@
             pointer-events: auto;
         }
 
+        /* 玩家操作區域（可在此調整左右兩側的大小與邊框） */
         .player-zone {
             width: 45%;
             height: 100%;
@@ -109,12 +126,13 @@
             align-items: center;
             padding: 20px;
             position: relative;
-            border: 2px dashed rgba(0, 243, 255, 0.2);
+            border: 2px dashed var(--border-glow);
         }
 
         #zone-p1 { border-right: none; }
         #zone-p2 { border-left: none; }
 
+        /* 中央指令與狀態區 */
         .center-hud {
             width: 10%;
             height: 100%;
@@ -122,16 +140,16 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(11, 15, 25, 0.4);
+            background: var(--hud-bg);
             backdrop-filter: blur(4px);
-            border-left: 1px solid rgba(0, 243, 255, 0.2);
-            border-right: 1px solid rgba(0, 243, 255, 0.2);
+            border-left: 1px solid var(--border-glow);
+            border-right: 1px solid var(--border-glow);
         }
 
         .player-header {
             font-size: 1.2rem;
             font-weight: bold;
-            color: #00f3ff;
+            color: var(--primary-color);
             text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
             margin-bottom: 10px;
         }
@@ -139,7 +157,7 @@
         .player-score {
             font-size: 3rem;
             font-weight: 900;
-            color: #ffffff;
+            color: var(--text-color);
             text-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
             margin-bottom: 15px;
         }
@@ -155,15 +173,17 @@
             display: none;
         }
 
+        /* 中央提示詞字體大小與樣式 */
         #command-display {
             font-size: 1.8rem;
             font-weight: 900;
-            color: #00f3ff;
-            text-shadow: 0 0 20px #00f3ff;
+            color: var(--primary-color);
+            text-shadow: 0 0 20px var(--primary-color);
             text-align: center;
             line-height: 1.4;
         }
 
+        /* 開始遊戲覆蓋層 */
         #overlay-screen {
             position: absolute;
             top: 0;
@@ -183,15 +203,15 @@
         .game-title {
             font-size: 2.2rem;
             font-weight: 900;
-            color: #00f3ff;
+            color: var(--primary-color);
             margin-bottom: 20px;
             text-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
             text-align: center;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #00f3ff, #0066ff);
-            color: #ffffff;
+            background: linear-gradient(135deg, var(--primary-color), #0066ff);
+            color: var(--text-color);
             border: none;
             padding: 15px 30px;
             font-size: 1rem;
@@ -248,28 +268,47 @@
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
+        // ==========================================
+        // 集中設定檔 (Game Configuration)
+        // 集中管理參數，方便擴充動作、調整時間與畫面範圍
+        // ==========================================
+        const CONFIG = {
+            // 1. 時間間隔設定 (毫秒)
+            timing: {
+                countdownDelay: 1500, // 「準備...」到出題的等待時間
+                roundEndDelay: 2000   // 分出勝負後、進入下一局前的暫停時間
+            },
+            
+            // 2. 畫面範圍與靈敏度設定
+            detection: {
+                splitScreenX: 0.5,     // 左右玩家分界線 (0.5 代表畫面正中央)
+                neutralCrouchMax: 0.60 // 中立站姿時，髖部的最高位置界線
+            },
+            
+            // 3. 偵測動作的新增定義區 (未來新增動作只要在此新增項目即可)
+            commands: [
+                { text: "舉左手", check: (l) => l[15].y < l[11].y }, // 索引 15 手腕 y < 11 肩膀 y 代表舉高
+                { text: "舉右手", check: (l) => l[16].y < l[12].y }, // 索引 16 手腕 y < 12 肩膀 y 代表舉高
+                { text: "蹲下",   check: (l) => (l[23].y + l[24].y)/2 > 0.65 } // 左右髖部平均 y 超過 0.65 代表蹲下
+            ],
+            
+            // 4. 中立姿勢檢查邏輯 (確保玩家在準備時有乖乖放手、站好)
+            neutralCheck: function(l) {
+                const leftHandDown = l[15].y > l[11].y; // 左手腕低於左肩膀
+                const rightHandDown = l[16].y > l[12].y; // 右手腕低於右肩膀
+                const notCrouching = (l[23].y + l[24].y) / 2 < this.detection.neutralCrouchMax; // 沒有蹲下
+                return leftHandDown && rightHandDown && notCrouching;
+            }
+        };
+
         let poseLandmarker = undefined;
         let webcamRunning = false;
         let lastVideoTime = -1;
 
         let scoreP1 = 0;
         let scoreP2 = 0;
-        let gameState = "IDLE"; // IDLE, WAITING_FOR_NEUTRAL, COUNTDOWN, PLAYING, ROUND_END
-        let currentCommand = null;
-
-        const commands = [
-            { text: "舉左手", check: (l) => l[15].y < l[11].y }, // 左手腕高於左肩膀
-            { text: "舉右手", check: (l) => l[16].y < l[12].y }, // 右手腕高於右肩膀
-            { text: "蹲下", check: (l) => (l[23].y + l[24].y)/2 > 0.65 } // 髖部位置下降
-        ];
-
-        // 中立姿勢檢查：左右手腕皆低於肩膀，且沒有明顯蹲下
-        const neutralCheck = (l) => {
-            const leftHandDown = l[15].y > l[11].y;
-            const rightHandDown = l[16].y > l[12].y;
-            const notCrouching = (l[23].y + l[24].y) / 2 < 0.60;
-            return leftHandDown && rightHandDown && notCrouching;
-        };
+        let gameState = "IDLE"; // 遊戲狀態: IDLE (閒置), WAITING_FOR_NEUTRAL (等待歸位), COUNTDOWN (準備), PLAYING (進行中), ROUND_END (回合結束)
+        let currentCommand = null; // 當前出題內容
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -282,6 +321,7 @@
         const scoreP1El = document.getElementById('score-p1');
         const scoreP2El = document.getElementById('score-p2');
 
+        // 預先載入 MediaPipe AI 模型
         async function preloadModel() {
             try {
                 startBtn.innerText = "正在載入 WASM...";
@@ -306,6 +346,7 @@
 
         preloadModel();
 
+        // 點擊開始遊戲按鈕：啟動相機串流
         startBtn.addEventListener('click', async () => {
             if (!poseLandmarker) return;
             try {
@@ -319,35 +360,39 @@
                     overlayScreen.style.opacity = '0';
                     setTimeout(() => overlayScreen.style.display = 'none', 300);
                     requestAnimationFrame(predictWebcam);
-                    startNeutralCheckPhase();
+                    startNeutralCheckPhase(); // 啟動後先進入「等待玩家歸位」階段
                 });
             } catch (err) {
                 alert('無法啟用攝影機');
             }
         });
 
+        // 進入「等待中立歸位」階段
         function startNeutralCheckPhase() {
             gameState = "WAITING_FOR_NEUTRAL";
             currentCommand = null;
-            commandDisplay.style.color = "#00f3ff";
+            commandDisplay.style.color = "var(--primary-color)";
             commandDisplay.innerText = "請雙手放下\n維持站好";
         }
 
+        // 進入「準備倒數」階段
         function startCountdownPhase() {
             gameState = "COUNTDOWN";
-            commandDisplay.style.color = "#ffaa00";
+            commandDisplay.style.color = "var(--warning-color)";
             commandDisplay.innerText = "準備...";
             
             setTimeout(() => {
                 if (!webcamRunning) return;
-                const randomCmd = commands[Math.floor(Math.random() * commands.length)];
+                // 從設定檔的指令清單中隨機抽取一個動作
+                const randomCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
                 currentCommand = randomCmd;
-                gameState = "PLAYING";
-                commandDisplay.style.color = "#ff0055";
+                gameState = "PLAYING"; // 正式進入遊戲判定
+                commandDisplay.style.color = "var(--danger-color)";
                 commandDisplay.innerText = randomCmd.text;
-            }, 1500);
+            }, CONFIG.timing.countdownDelay);
         }
 
+        // 核心相機預測與遊戲迴圈
         async function predictWebcam() {
             if (canvasElement.width !== webcamVideo.videoWidth || canvasElement.height !== webcamVideo.videoHeight) {
                 canvasElement.width = webcamVideo.videoWidth;
@@ -367,56 +412,57 @@
 
                 if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
+                        // 依據設定檔中的分界線 (splitScreenX) 劃分左右玩家
                         const hipX = (landmarks[23].x + landmarks[24].x) / 2;
-                        if (hipX > 0.5) {
+                        if (hipX > CONFIG.detection.splitScreenX) {
                             p1Landmarks = landmarks; 
                         } else {
                             p2Landmarks = landmarks; 
                         }
 
+                        // 繪製骨架線條與關節點
                         drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
                         drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
                     }
                 }
 
-                // 1. 等待中立歸位階段：檢查雙方是否都符合中立姿勢
+                // 1. 狀態 A：等待中立歸位階段（檢查玩家是否雙手放下、站好）
                 if (gameState === "WAITING_FOR_NEUTRAL") {
-                    let p1Ready = p1Landmarks ? neutralCheck(p1Landmarks) : false;
-                    let p2Ready = p2Landmarks ? neutralCheck(p2Landmarks) : false;
+                    let p1Ready = p1Landmarks ? CONFIG.neutralCheck(p1Landmarks) : false;
+                    let p2Ready = p2Landmarks ? CONFIG.neutralCheck(p2Landmarks) : false;
 
-                    // 只要偵測到的玩家都符合中立姿勢（若兩人都入鏡則需雙方符合，若單人入鏡則單人符合即可）
                     let everyoneReady = false;
                     if (p1Landmarks && p2Landmarks) {
-                        everyoneReady = p1Ready && p2Ready;
+                        everyoneReady = p1Ready && p2Ready; // 兩人皆入鏡需雙方都準備好
                     } else if (p1Landmarks || p2Landmarks) {
-                        everyoneReady = p1Ready || p2Ready;
+                        everyoneReady = p1Ready || p2Ready; // 單人入鏡則該玩家準備好即可
                     }
 
                     if (everyoneReady) {
-                        startCountdownPhase();
+                        startCountdownPhase(); // 達標後進入倒數
                     }
                 }
 
-                // 2. 遊戲進行中判定邏輯
+                // 2. 狀態 B：遊戲進行中 (PLAYING) 判定邏輯
                 if (gameState === "PLAYING" && currentCommand) {
                     let p1Success = p1Landmarks ? currentCommand.check(p1Landmarks) : false;
                     let p2Success = p2Landmarks ? currentCommand.check(p2Landmarks) : false;
 
                     if (p1Success || p2Success) {
-                        gameState = "ROUND_END";
+                        gameState = "ROUND_END"; // 鎖定狀態避免重複判定
                         if (p1Success) {
                             scoreP1++;
                             scoreP1El.innerText = scoreP1;
-                            commandDisplay.style.color = "#00ffcc";
+                            commandDisplay.style.color = "var(--success-color)";
                             commandDisplay.innerText = "P1 得分！";
                         } else if (p2Success) {
                             scoreP2++;
                             scoreP2El.innerText = scoreP2;
-                            commandDisplay.style.color = "#00ffcc";
+                            commandDisplay.style.color = "var(--success-color)";
                             commandDisplay.innerText = "P2 得分！";
                         }
-                        // 兩秒後進入歸位檢查，而不是直接倒數
-                        setTimeout(startNeutralCheckPhase, 2000);
+                        // 經過設定檔中的停留時間後，重新回到歸位檢查
+                        setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
                     }
                 }
 
