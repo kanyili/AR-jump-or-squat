@@ -156,7 +156,7 @@
         }
 
         #command-display {
-            font-size: 2rem;
+            font-size: 1.8rem;
             font-weight: 900;
             color: #00f3ff;
             text-shadow: 0 0 20px #00f3ff;
@@ -229,7 +229,7 @@
             </div>
 
             <div class="center-hud">
-                <div id="command-display">準備</div>
+                <div id="command-display">請站好</div>
             </div>
 
             <div class="player-zone" id="zone-p2">
@@ -254,15 +254,22 @@
 
         let scoreP1 = 0;
         let scoreP2 = 0;
-        let gameState = "IDLE"; // IDLE, COUNTDOWN, PLAYING, ROUND_END
+        let gameState = "IDLE"; // IDLE, WAITING_FOR_NEUTRAL, COUNTDOWN, PLAYING, ROUND_END
         let currentCommand = null;
-        let roundTimer = null;
 
         const commands = [
             { text: "舉左手", check: (l) => l[15].y < l[11].y }, // 左手腕高於左肩膀
             { text: "舉右手", check: (l) => l[16].y < l[12].y }, // 右手腕高於右肩膀
             { text: "蹲下", check: (l) => (l[23].y + l[24].y)/2 > 0.65 } // 髖部位置下降
         ];
+
+        // 中立姿勢檢查：左右手腕皆低於肩膀，且沒有明顯蹲下
+        const neutralCheck = (l) => {
+            const leftHandDown = l[15].y > l[11].y;
+            const rightHandDown = l[16].y > l[12].y;
+            const notCrouching = (l[23].y + l[24].y) / 2 < 0.60;
+            return leftHandDown && rightHandDown && notCrouching;
+        };
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -312,25 +319,30 @@
                     overlayScreen.style.opacity = '0';
                     setTimeout(() => overlayScreen.style.display = 'none', 300);
                     requestAnimationFrame(predictWebcam);
-                    startNewRound();
+                    startNeutralCheckPhase();
                 });
             } catch (err) {
                 alert('無法啟用攝影機');
             }
         });
 
-        function startNewRound() {
-            if (gameState === "PLAYING") return;
-            gameState = "COUNTDOWN";
-            currentCommand = null; // 清空當前指令，確保準備期間無法被比對
+        function startNeutralCheckPhase() {
+            gameState = "WAITING_FOR_NEUTRAL";
+            currentCommand = null;
             commandDisplay.style.color = "#00f3ff";
+            commandDisplay.innerText = "請雙手放下\n維持站好";
+        }
+
+        function startCountdownPhase() {
+            gameState = "COUNTDOWN";
+            commandDisplay.style.color = "#ffaa00";
             commandDisplay.innerText = "準備...";
             
             setTimeout(() => {
                 if (!webcamRunning) return;
                 const randomCmd = commands[Math.floor(Math.random() * commands.length)];
                 currentCommand = randomCmd;
-                gameState = "PLAYING"; // 只有在此狀態下才正式開放判定
+                gameState = "PLAYING";
                 commandDisplay.style.color = "#ff0055";
                 commandDisplay.innerText = randomCmd.text;
             }, 1500);
@@ -355,12 +367,11 @@
 
                 if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
-                        // 以畫面中線 (x = 0.5) 區分左右玩家
                         const hipX = (landmarks[23].x + landmarks[24].x) / 2;
                         if (hipX > 0.5) {
-                            p1Landmarks = landmarks; // 鏡射後左側
+                            p1Landmarks = landmarks; 
                         } else {
-                            p2Landmarks = landmarks; // 鏡射後右側
+                            p2Landmarks = landmarks; 
                         }
 
                         drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
@@ -368,7 +379,25 @@
                     }
                 }
 
-                // 遊戲判定邏輯：嚴格檢查 gameState 為 "PLAYING" 且 currentCommand 存在才進行比對
+                // 1. 等待中立歸位階段：檢查雙方是否都符合中立姿勢
+                if (gameState === "WAITING_FOR_NEUTRAL") {
+                    let p1Ready = p1Landmarks ? neutralCheck(p1Landmarks) : false;
+                    let p2Ready = p2Landmarks ? neutralCheck(p2Landmarks) : false;
+
+                    // 只要偵測到的玩家都符合中立姿勢（若兩人都入鏡則需雙方符合，若單人入鏡則單人符合即可）
+                    let everyoneReady = false;
+                    if (p1Landmarks && p2Landmarks) {
+                        everyoneReady = p1Ready && p2Ready;
+                    } else if (p1Landmarks || p2Landmarks) {
+                        everyoneReady = p1Ready || p2Ready;
+                    }
+
+                    if (everyoneReady) {
+                        startCountdownPhase();
+                    }
+                }
+
+                // 2. 遊戲進行中判定邏輯
                 if (gameState === "PLAYING" && currentCommand) {
                     let p1Success = p1Landmarks ? currentCommand.check(p1Landmarks) : false;
                     let p2Success = p2Landmarks ? currentCommand.check(p2Landmarks) : false;
@@ -386,7 +415,8 @@
                             commandDisplay.style.color = "#00ffcc";
                             commandDisplay.innerText = "P2 得分！";
                         }
-                        setTimeout(startNewRound, 2000);
+                        // 兩秒後進入歸位檢查，而不是直接倒數
+                        setTimeout(startNeutralCheckPhase, 2000);
                     }
                 }
 
