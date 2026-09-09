@@ -269,13 +269,13 @@
                 centerDeadZone: 0.08,        
                 neutralCrouchMax: 0.70,      
                 visibilityThreshold: 0.4,    
-                squatKneeAngleMax: 145,      // [FIX-SQUAT] 膝蓋角度門檻調降至 145 度
+                squatKneeAngleMax: 145,      
                 squatMinHipDropRatio: 0.04,  
                 maxTorsoLeanAngle: 45,       
                 squatHistoryFrames: 8,       
                 actionConfirmFrames: 3,      
-                handDownTolerance: 0.03,     // [FIX-NEUTRAL] 雙手放下容許誤差
-                handRaiseMinDelta: 0.05      // [FIX-HAND-RAISE] 舉手最小超過肩膀距離
+                handDownTolerance: 0.03,     
+                handRaiseMinDelta: 0.05      
             },
             commands: [
                 { 
@@ -283,7 +283,6 @@
                     check: (l) => {
                         const t = CONFIG.detection.visibilityThreshold;
                         const delta = CONFIG.detection.handRaiseMinDelta;
-                        // [FIX-HAND-RAISE] 增加手腕明顯高於肩膀的 delta 限制與明確 visibility 檢查
                         if ((l[15].visibility ?? 0) < t || (l[11].visibility ?? 0) < t) return false;
                         return l[15].y < l[11].y - delta; 
                     } 
@@ -293,7 +292,6 @@
                     check: (l) => {
                         const t = CONFIG.detection.visibilityThreshold;
                         const delta = CONFIG.detection.handRaiseMinDelta;
-                        // [FIX-HAND-RAISE] 增加手腕明顯高於肩膀的 delta 限制與明確 visibility 檢查
                         if ((l[16].visibility ?? 0) < t || (l[12].visibility ?? 0) < t) return false;
                         return l[16].y < l[12].y - delta; 
                     } 
@@ -320,7 +318,6 @@
 
                         if (bodyScale <= 0) return false;
 
-                        // [FIX-BASELINE] 安全確保 playerState 與 baseline 已初始化
                         if (!playerState[playerKey] || !playerState[playerKey].baseline.isInitialized) return false;
                         const baseline = playerState[playerKey].baseline;
                         if (baseline.hipY === 0) return false;
@@ -345,7 +342,6 @@
                         const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
                         const kneeBent = avgKneeAngle < CONFIG.detection.squatKneeAngleMax;
 
-                        // [FIX-SQUAT] 改進 history 整體下降趨勢檢查，避免單一 frame 抖動誤判
                         const history = playerState[playerKey].squatHistory;
                         history.push(hip.y);
                         if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
@@ -370,26 +366,31 @@
             neutralCheck: function(l) {
                 const t = CONFIG.detection.visibilityThreshold; 
                 const tolerance = CONFIG.detection.handDownTolerance;
+                
+                // [FIX-NEUTRAL-RELAX] 放寬 neutralCheck 的限制，僅檢測肩膀與髖部是否在畫面中（手腕 visibility 可能因角度被衣袖遮蔽或偵測不穩，故不強求手腕 visibility）
                 const isVisible = (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t && 
-                                  (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t &&
-                                  (l[15].visibility ?? 0) > t && (l[16].visibility ?? 0) > t;   
+                                  (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t;   
 
                 if (!isVisible) return false;
 
                 const notCrouching = (l[23].y + l[24].y) / 2 < CONFIG.detection.neutralCrouchMax; 
-                // [FIX-NEUTRAL] 檢查雙手放下（手腕不應明顯高於肩膀）
-                const handsDown = (l[15].y >= l[11].y - tolerance) && (l[16].y >= l[12].y - tolerance);
+                
+                // 檢查雙手放下（若手腕有被偵測到才進行高度確認，避免手腕 visibility 略低於 0.4 時卡住無法準備）
+                const leftWristVis = l[15].visibility ?? 0;
+                const rightWristVis = l[16].visibility ?? 0;
+                const leftHandsDown = leftWristVis < t || (l[15].y >= l[11].y - tolerance);
+                const rightHandsDown = rightWristVis < t || (l[16].y >= l[12].y - tolerance);
 
-                return notCrouching && handsDown;
+                return notCrouching && leftHandsDown && rightHandsDown;
             },
 
             isBodyInFrame: function(l) {
                 if (!l) return false;
                 const t = CONFIG.detection.visibilityThreshold;
+                // [FIX-FRAME-RELAX] 修正 isBodyInFrame：只檢查肩膀與髖部 (11, 12, 23, 24)，不強制要求手腕 (15, 16) 必須高信心值入鏡，解決使用者已經全身入鏡卻被提示「請完整入鏡」的問題
                 const hasShoulders = (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t;
                 const hasHips = (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t;
-                const hasWrists = (l[15].visibility ?? 0) > t && (l[16].visibility ?? 0) > t;
-                return hasShoulders && hasHips && hasWrists;
+                return hasShoulders && hasHips;
             }
         };
 
@@ -499,7 +500,6 @@
             commandDisplay.innerText = "準備...";
             
             setTimeout(() => {
-                // [FIX-SAFEGUARD] 檢查 webcam 是否仍在執行且狀態正確
                 if (!webcamRunning || gameState !== "COUNTDOWN") return;
                 const randomCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
                 currentCommand = randomCmd;
@@ -580,7 +580,7 @@
                         const b1 = playerState.p1.baseline;
                         if (!b1.isInitialized) {
                             b1.samples.push(hipY1);
-                            if (b1.samples.length >= 12) { // [FIX-BASELINE] 收集 12 個樣本以取中位數
+                            if (b1.samples.length >= 12) {
                                 b1.samples.sort((a, b) => a - b);
                                 const mid = Math.floor(b1.samples.length / 2);
                                 b1.hipY = b1.samples.length % 2 !== 0 ? b1.samples[mid] : (b1.samples[mid - 1] + b1.samples[mid]) / 2;
@@ -595,7 +595,7 @@
                         const b2 = playerState.p2.baseline;
                         if (!b2.isInitialized) {
                             b2.samples.push(hipY2);
-                            if (b2.samples.length >= 12) { // [FIX-BASELINE] 收集 12 個樣本以取中位數
+                            if (b2.samples.length >= 12) {
                                 b2.samples.sort((a, b) => a - b);
                                 const mid = Math.floor(b2.samples.length / 2);
                                 b2.hipY = b2.samples.length % 2 !== 0 ? b2.samples[mid] : (b2.samples[mid - 1] + b2.samples[mid]) / 2;
