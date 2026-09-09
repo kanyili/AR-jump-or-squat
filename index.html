@@ -75,11 +75,11 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* 前鏡頭水平鏡像翻轉 */
+            transform: scaleX(-1);
             z-index: 1;
         }
 
-        /* Layer 2: 中間層 - Canvas 骨架與特效繪製 */
+        /* Layer 2: 中間層 - Canvas 骨架畫布 */
         #game-canvas {
             position: absolute;
             top: 0;
@@ -88,7 +88,7 @@
             height: 100%;
             z-index: 2;
             pointer-events: none;
-            transform: scaleX(-1); /* 配合影片鏡像，將骨架座標一同翻轉對齊 */
+            transform: scaleX(-1);
         }
 
         /* Layer 3: 最上層 - 介面 HUD */
@@ -208,6 +208,13 @@
             cursor: pointer;
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
         }
+        
+        .btn-primary:disabled {
+            background: #2a3b4c;
+            color: #7a8b9c;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -236,7 +243,7 @@
             </div>
 
             <div class="center-hud">
-                <div id="command-display">載入AI中</div>
+                <div id="command-display">READY</div>
             </div>
 
             <div class="player-zone" id="zone-p2">
@@ -249,14 +256,12 @@
         <!-- 遊戲開始覆蓋選單 -->
         <div id="overlay-screen" class="interactive">
             <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
-            <button class="btn-primary" id="start-btn" disabled>正在載入 AI 模型...</button>
+            <button class="btn-primary" id="start-btn" disabled>正在初始化元件...</button>
         </div>
     </div>
 
     <!-- AI 模型初始化與辨識邏輯 -->
     <script>
-        const { PoseLandmarker, FilesetResolver, DrawingUtils } = vision;
-
         let poseLandmarker = undefined;
         let webcamRunning = false;
         let lastVideoTime = -1;
@@ -266,39 +271,47 @@
         const webcamVideo = document.getElementById('webcam-video');
         const canvasElement = document.getElementById('game-canvas');
         const canvasCtx = canvasElement.getContext('2d');
-        const commandDisplay = document.getElementById('command-display');
 
-        const drawingUtils = new DrawingUtils(canvasCtx);
+        let drawingUtils = null;
 
-        // 1. 初始化 MediaPipe Pose Landmarker 模型
-        async function createPoseLandmarker() {
+        async function preloadModel() {
             try {
+                if (typeof vision === 'undefined') {
+                    throw new Error("MediaPipe 函式庫載入失敗，請檢查網路連線");
+                }
+                const { PoseLandmarker, FilesetResolver, DrawingUtils } = vision;
+                drawingUtils = new DrawingUtils(canvasCtx);
+
+                startBtn.innerText = "正在載入本地 AI 模型...";
+
                 const visionFilesetResolver = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
                 );
+
+                // 改為讀取 GitHub 同層的本地模型檔案
                 poseLandmarker = await PoseLandmarker.createFromOptions(visionFilesetResolver, {
                     baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
+                        modelAssetPath: "./models/pose_landmarker_lite.task",
                         delegate: "GPU"
                     },
                     runningMode: "VIDEO",
-                    numPoses: 2 // 支援同時追蹤兩個人
+                    numPoses: 2
                 });
-                
+
                 startBtn.disabled = false;
                 startBtn.innerText = "開始遊戲";
-                commandDisplay.innerText = "READY";
-                console.log("MediaPipe 模型載入完成！");
+                console.log("本地 AI 模型載入完成！");
+
             } catch (err) {
                 console.error("AI 模型載入失敗:", err);
-                commandDisplay.innerText = "載入失敗";
-                startBtn.innerText = "載入失敗，請重新整理";
+                startBtn.innerText = "載入失敗，請檢查檔案路徑或重新整理";
             }
         }
 
-        createPoseLandmarker();
+        window.addEventListener('DOMContentLoaded', () => {
+            preloadModel();
+        });
 
-        // 2. 點擊開始按鈕
         startBtn.addEventListener('click', async () => {
             if (!poseLandmarker) return;
 
@@ -322,19 +335,16 @@
                         overlayScreen.style.display = 'none';
                     }, 300);
 
-                    // 開始進行每秒影格辨識與繪製
                     requestAnimationFrame(predictWebcam);
                 });
 
             } catch (err) {
                 console.error('無法存取攝影機:', err);
-                alert('無法啟用攝影機，請檢查 Safari 權限設定。');
+                alert('無法啟用攝影機，請檢查 Safari 相機權限設定。');
             }
         });
 
-        // 3. 即時循環辨識迴圈
         async function predictWebcam() {
-            // 設定 Canvas 尺寸與 Video 一致
             if (canvasElement.width !== webcamVideo.videoWidth || canvasElement.height !== webcamVideo.videoHeight) {
                 canvasElement.width = webcamVideo.videoWidth;
                 canvasElement.height = webcamVideo.videoHeight;
@@ -344,18 +354,14 @@
             if (lastVideoTime !== webcamVideo.currentTime) {
                 lastVideoTime = webcamVideo.currentTime;
                 
-                // 執行 AI 辨識
                 const poseResult = poseLandmarker.detectForVideo(webcamVideo, startTimeMs);
 
-                // 清除上一幀的畫布
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-                if (poseResult.landmarks) {
-                    // 迴圈繪製每一個被偵測到的人的骨架
+                if (poseResult.landmarks && drawingUtils) {
                     for (const landmarks of poseResult.landmarks) {
-                        // 繪製關節點與連線
-                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
+                        drawingUtils.drawConnectors(landmarks, vision.PoseLandmarker.POSE_CONNECTIONS, {
                             color: '#00F3FF',
                             lineWidth: 3
                         });
