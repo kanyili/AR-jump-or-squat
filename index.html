@@ -193,7 +193,6 @@
             line-height: 1.4;
         }
 
-        /* 全域置頂中央的版本時間標記樣式 */
         #version-stamp {
             position: fixed;
             top: 10px;
@@ -259,8 +258,7 @@
 </head>
 <body>
 
-    <!-- 畫面中央正上方的版本時間標記 -->
-    <div id="version-stamp">2026-06-06 16:30:00</div>
+    <div id="version-stamp">2026-06-06 16:30:00 (Fixed)</div>
 
     <div id="rotate-warning">
         <div class="icon">📱</div>
@@ -301,7 +299,7 @@
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
-        const DEBUG = false; // 已關閉偵錯視窗
+        const DEBUG = false;
 
         const CONFIG = {
             timing: {
@@ -462,7 +460,7 @@
                 baseline: { samples: [], hipY: 0, isInitialized: false },
                 squatHistory: [],
                 actionConfirm: 0,
-                lastCenterX: 0.25,
+                lastCenterX: 0.75, // [已修正] P1 在畫面左側，對應攝影機物理座標右側 (0.75)
                 trackingDistance: 0,
                 identityMaintained: true,
                 reactionTime: null,
@@ -473,7 +471,7 @@
                 baseline: { samples: [], hipY: 0, isInitialized: false },
                 squatHistory: [],
                 actionConfirm: 0,
-                lastCenterX: 0.75,
+                lastCenterX: 0.25, // [已修正] P2 在畫面右側，對應攝影機物理座標左側 (0.25)
                 trackingDistance: 0,
                 identityMaintained: true,
                 reactionTime: null,
@@ -640,7 +638,7 @@
                     playerState.p2.identityMaintained = true;
                     playerState.p2.lastCenterX = item.centerX;
                 } else {
-                    if (item.centerX < 0.5) {
+                    if (item.centerX >= 0.5) {
                         p1Landmarks = item.pose;
                         playerState.p1.trackingDistance = 0;
                         playerState.p1.identityMaintained = false;
@@ -654,40 +652,18 @@
                 }
             } else {
                 validPoses.sort((a, b) => a.centerX - b.centerX);
-                const pA = validPoses[0];
-                const pB = validPoses[1];
+                const pA = validPoses[0]; // 畫面右側 (物理座標小，對應 P2)
+                const pB = validPoses[1]; // 畫面左側 (物理座標大，對應 P1)
 
-                const cost1 = Math.abs(pA.centerX - playerState.p1.lastCenterX) + Math.abs(pB.centerX - playerState.p2.lastCenterX);
-                const cost2 = Math.abs(pB.centerX - playerState.p1.lastCenterX) + Math.abs(pA.centerX - playerState.p2.lastCenterX);
-
-                if (cost1 <= cost2 && cost1 < 0.6) {
-                    p1Landmarks = pA.pose;
-                    p2Landmarks = pB.pose;
-                    playerState.p1.trackingDistance = Math.abs(pA.centerX - playerState.p1.lastCenterX);
-                    playerState.p2.trackingDistance = Math.abs(pB.centerX - playerState.p2.lastCenterX);
-                    playerState.p1.identityMaintained = true;
-                    playerState.p2.identityMaintained = true;
-                    playerState.p1.lastCenterX = pA.centerX;
-                    playerState.p2.lastCenterX = pB.centerX;
-                } else if (cost2 < cost1 && cost2 < 0.6) {
-                    p1Landmarks = pB.pose;
-                    p2Landmarks = pA.pose;
-                    playerState.p1.trackingDistance = Math.abs(pB.centerX - playerState.p1.lastCenterX);
-                    playerState.p2.trackingDistance = Math.abs(pA.centerX - playerState.p2.lastCenterX);
-                    playerState.p1.identityMaintained = true;
-                    playerState.p2.identityMaintained = true;
-                    playerState.p1.lastCenterX = pB.centerX;
-                    playerState.p2.lastCenterX = pA.centerX;
-                } else {
-                    p1Landmarks = pA.pose;
-                    p2Landmarks = pB.pose;
-                    playerState.p1.trackingDistance = 0;
-                    playerState.p2.trackingDistance = 0;
-                    playerState.p1.identityMaintained = false;
-                    playerState.p2.identityMaintained = false;
-                    playerState.p1.lastCenterX = pA.centerX;
-                    playerState.p2.lastCenterX = pB.centerX;
-                }
+                // 讓 pB 配對 P1，pA 配對 P2
+                p1Landmarks = pB.pose;
+                p2Landmarks = pA.pose;
+                playerState.p1.trackingDistance = Math.abs(pB.centerX - playerState.p1.lastCenterX);
+                playerState.p2.trackingDistance = Math.abs(pA.centerX - playerState.p2.lastCenterX);
+                playerState.p1.identityMaintained = true;
+                playerState.p2.identityMaintained = true;
+                playerState.p1.lastCenterX = pB.centerX;
+                playerState.p2.lastCenterX = pA.centerX;
             }
 
             return { p1Landmarks, p2Landmarks };
