@@ -269,28 +269,25 @@
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
         // ==========================================
-        // 集中設定檔 (Game Configuration)[cite: 5]
-        // 集中管理參數、可見度門檻與動作判定[cite: 5]
+        // 集中設定檔 (Game Configuration)
         // ==========================================
         const CONFIG = {
-            // 1. 時間間隔設定 (毫秒)[cite: 5]
             timing: {
-                countdownDelay: 1500, // 「準備...」到出題的等待時間[cite: 5]
-                roundEndDelay: 2000   // 分出勝負後、進入下一局前的暫停時間[cite: 5]
+                countdownDelay: 1500, 
+                roundEndDelay: 2000   
             },
-            
-            // 2. 畫面範圍與信心分數門檻設定[cite: 5]
             detection: {
-                splitScreenX: 0.5,           // 左右玩家分界線 (0.5 代表畫面正中央)[cite: 5]
-                neutralCrouchMax: 0.60,      // 中立站姿時，髖部的最高位置界線[cite: 5]
-                visibilityThreshold: 0.4,    // 動作判定的關節可見度信心門檻 (已從 0.6 調降)[cite: 5]
-                squatKneeAngleMax: 142,      // 膝蓋彎曲角度門檻 (雙腿平均或單腿小於此角度)[cite: 5]
-                squatHipKneeRatioMax: 0.65,  // 3D 歐幾里得距離比例門檻 (hip-knee / (hip-knee + knee-ankle))[cite: 5]
-                squatMinHipDropRatio: 0.08,  // 相對身高的最小髖部下降比例[cite: 5]
-                squatHistoryFrames: 8        // 歷史軌跡幀數[cite: 5]
+                splitScreenX: 0.5,           
+                neutralCrouchMax: 0.60,      
+                visibilityThreshold: 0.4,    
+                frameVisibilityThreshold: 0.3, // 入鏡專用寬鬆門檻
+                squatKneeAngleMax: 145,      // 膝蓋角度上限
+                squatHipKneeRatioMax: 0.65,  
+                squatMinHipDropRatio: 0.08,  
+                maxTorsoLeanAngle: 35,       // 軀幹最大前傾角度（度），防止單純彎腰
+                squatHistoryFrames: 8,       
+                actionConfirmFrames: 3       // 連續確認幀數
             },
-            
-            // 3. 偵測動作的新增定義區 (加入 3D 歐幾里得比例、站立基準、動態歷史下降與防彎腰檢查)[cite: 5]
             commands: [
                 { 
                     text: "舉左手", 
@@ -312,18 +309,15 @@
                     text: "蹲下",   
                     check: (l, playerKey = 'p1') => {
                         const t = CONFIG.detection.visibilityThreshold;
-
-                        // 嚴格檢查重要關節 visibility[cite: 5]
                         if (
-                            (l[11].visibility ?? 0) < t || (l[12].visibility ?? 0) < t || // 肩膀
-                            (l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t || // 髖部
-                            (l[25].visibility ?? 0) < t || (l[26].visibility ?? 0) < t || // 膝蓋
-                            (l[27].visibility ?? 0) < t || (l[28].visibility ?? 0) < t    // 腳踝
+                            (l[11].visibility ?? 0) < t || (l[12].visibility ?? 0) < t || 
+                            (l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t || 
+                            (l[25].visibility ?? 0) < t || (l[26].visibility ?? 0) < t || 
+                            (l[27].visibility ?? 0) < t || (l[28].visibility ?? 0) < t    
                         ) {
                             return false;
                         }
 
-                        // 輔助計算 2D 歐幾里得距離[cite: 5]
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
                         const shoulder = { x: (l[11].x + l[12].x) / 2, y: (l[11].y + l[12].y) / 2 };
@@ -338,20 +332,15 @@
 
                         if (bodyScale <= 0) return false;
 
-                        // 1. 取得玩家獨立站立基準[cite: 5]
-                        const baseline = squatBaseline[playerKey];
-                        if (!baseline || !baseline.isInitialized) {
-                            // 若尚未初始化基準，先以當前幀建立預設基準[cite: 5]
-                            baseline.hipY = hip.y;
-                            baseline.isInitialized = true;
-                        }
+                        const baseline = playerState[playerKey].baseline;
+                        if (!baseline.isInitialized || baseline.hipY === 0) return false;
 
-                        // 2. 檢查相對身高的最小髖部下降量 (確保有明顯下降)[cite: 5]
-                        const hipDrop = hip.y - baseline.hipY; // 畫面往下 y 變大[cite: 5]
+                        // A. 髖部下降檢驗
+                        const hipDrop = hip.y - baseline.hipY; 
                         const hipDropRatio = hipDrop / bodyScale;
                         const hasDropped = hipDropRatio > CONFIG.detection.squatMinHipDropRatio;
 
-                        // 3. 計算 3D 尺度不敏感的比例 (hip-knee / (hip-knee + knee-ankle))[cite: 5]
+                        // B. 膝蓋角度檢驗
                         const leftThigh = dist(l[23], l[25]);
                         const leftShin = dist(l[25], l[27]);
                         const rightThigh = dist(l[24], l[26]);
@@ -362,7 +351,6 @@
                         const avgRatio = (leftRatio + rightRatio) / 2;
                         const isRatioValid = avgRatio < CONFIG.detection.squatHipKneeRatioMax;
 
-                        // 4. 計算左右膝蓋彎曲角度[cite: 5]
                         const getAngle = (a, b, c) => {
                             const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
                             let angle = Math.abs(radians * 180.0 / Math.PI);
@@ -376,26 +364,35 @@
                         const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
                         const isKneeBent = minKneeAngle < CONFIG.detection.squatKneeAngleMax || avgKneeAngle < CONFIG.detection.squatKneeAngleMax;
 
-                        // 5. 短期歷史下降軌跡檢查 (確認曾經從站立位置下降，而非一直蹲著或單純彎腰)[cite: 5]
-                        let hasDescendedFromHistory = true;
-                        if (playerKey) {
-                            const history = squatHistory[playerKey];
-                            if (history.length >= 3) {
-                                const earliestHipY = history[0];
-                                const maxDropInHistory = hip.y - earliestHipY;
-                                hasDescendedFromHistory = maxDropInHistory > (bodyScale * 0.04);
-                            }
-                            history.push(hip.y);
-                            if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
+                        // C. 軀幹角度限制（避免單純彎腰）
+                        const torsoVector = { x: shoulder.x - hip.x, y: shoulder.y - hip.y };
+                        const verticalVector = { x: 0, y: -1 };
+                        const dot = torsoVector.x * verticalVector.x + torsoVector.y * verticalVector.y;
+                        const magTorso = Math.hypot(torsoVector.x, torsoVector.y);
+                        const magVert = 1;
+                        let torsoAngle = 0;
+                        if (magTorso > 0) {
+                            let cosVal = Math.max(-1, Math.min(1, dot / (magTorso * magVert)));
+                            torsoAngle = Math.acos(cosVal) * (180.0 / Math.PI);
                         }
+                        const isTorsoValid = torsoAngle <= CONFIG.detection.maxTorsoLeanAngle;
 
-                        // 綜合多重條件 AND 確保排除彎腰與誤判[cite: 5]
-                        return hasDropped && isRatioValid && isKneeBent && hasDescendedFromHistory;
+                        // 歷史軌跡檢查
+                        let hasDescendedFromHistory = true;
+                        const history = playerState[playerKey].squatHistory;
+                        if (history.length >= 3) {
+                            const earliestHipY = history[0];
+                            const maxDropInHistory = hip.y - earliestHipY;
+                            hasDescendedFromHistory = maxDropInHistory > (bodyScale * 0.04);
+                        }
+                        history.push(hip.y);
+                        if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
+
+                        return hasDropped && isRatioValid && isKneeBent && isTorsoValid && hasDescendedFromHistory;
                     } 
                 }
             ],
             
-            // 4. 中立姿勢與全身入鏡檢查邏輯[cite: 5]
             neutralCheck: function(l) {
                 const t = 0.55; 
                 const isFullyVisible = 
@@ -414,26 +411,29 @@
                 return leftHandDown && rightHandDown && notCrouching;
             },
 
-            // 5. 快速完整入鏡檢查 (門檻已調低至 0.4)[cite: 5]
             isBodyInFrame: function(l) {
                 if (!l) return false;
-                const t = 0.4; 
+                const t = CONFIG.detection.frameVisibilityThreshold; 
                 return (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t &&
                        (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t &&
-                       (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t &&
-                       (l[27].visibility ?? 0) > t && (l[28].visibility ?? 0) > t;
+                       (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t;
             }
         };
 
-        // P1 / P2 獨立歷史紀錄與站立基準變數 (完全隔離，互不干擾)[cite: 5]
-        const squatHistory = {
-            p1: [],
-            p2: []
-        };
-
-        const squatBaseline = {
-            p1: { hipY: 0, isInitialized: false },
-            p2: { hipY: 0, isInitialized: false }
+        // 獨立玩家狀態管理結構
+        const playerState = {
+            p1: {
+                tracking: null,
+                baseline: { samples: [], hipY: 0, isInitialized: false },
+                squatHistory: [],
+                actionConfirm: 0
+            },
+            p2: {
+                tracking: null,
+                baseline: { samples: [], hipY: 0, isInitialized: false },
+                squatHistory: [],
+                actionConfirm: 0
+            }
         };
 
         let poseLandmarker = undefined;
@@ -444,6 +444,7 @@
         let scoreP2 = 0;
         let gameState = "IDLE"; 
         let currentCommand = null; 
+        let roundScored = false;
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -505,29 +506,28 @@
         function startNeutralCheckPhase() {
             gameState = "WAITING_FOR_NEUTRAL";
             currentCommand = null;
-            // 清空歷史紀錄與基準，準備重新抓取站立基準[cite: 5]
-            squatHistory.p1 = [];
-            squatHistory.p2 = [];
-            squatBaseline.p1.isInitialized = false;
-            squatBaseline.p2.isInitialized = false;
+            roundScored = false;
+            
+            // 重置雙方獨立狀態與確認幀數
+            playerState.p1.squatHistory = [];
+            playerState.p1.actionConfirm = 0;
+            playerState.p1.baseline = { samples: [], hipY: 0, isInitialized: false };
+
+            playerState.p2.squatHistory = [];
+            playerState.p2.actionConfirm = 0;
+            playerState.p2.baseline = { samples: [], hipY: 0, isInitialized: false };
+
             commandDisplay.style.color = "var(--primary-color)";
             commandDisplay.innerText = "請雙手放下\n維持站好";
         }
 
-        function startCountdownPhase(p1Landmarks, p2Landmarks) {
+        function startCountdownPhase() {
             gameState = "COUNTDOWN";
-            squatHistory.p1 = [];
-            squatHistory.p2 = [];
-
-            // 在倒數階段鎖定並記錄 P1/P2 各自的站立基準[cite: 5]
-            if (p1Landmarks) {
-                squatBaseline.p1.hipY = (p1Landmarks[23].y + p1Landmarks[24].y) / 2;
-                squatBaseline.p1.isInitialized = true;
-            }
-            if (p2Landmarks) {
-                squatBaseline.p2.hipY = (p2Landmarks[23].y + p2Landmarks[24].y) / 2;
-                squatBaseline.p2.isInitialized = true;
-            }
+            playerState.p1.squatHistory = [];
+            playerState.p1.actionConfirm = 0;
+            playerState.p2.squatHistory = [];
+            playerState.p2.actionConfirm = 0;
+            roundScored = false;
 
             commandDisplay.style.color = "var(--warning-color)";
             commandDisplay.innerText = "準備...";
@@ -540,6 +540,85 @@
                 commandDisplay.style.color = "var(--danger-color)";
                 commandDisplay.innerText = randomCmd.text;
             }, CONFIG.timing.countdownDelay);
+        }
+
+        // 玩家追蹤與配對邏輯
+        function updatePlayerTracking(poses) {
+            let p1Current = playerState.p1.tracking;
+            let p2Current = playerState.p2.tracking;
+
+            let p1Assigned = null;
+            let p2Assigned = null;
+
+            if (poses.length === 0) {
+                playerState.p1.tracking = null;
+                playerState.p2.tracking = null;
+                return { p1Landmarks: null, p2Landmarks: null };
+            }
+
+            const getCenter = (l) => ({
+                x: (l[23].x + l[24].x + l[11].x + l[12].x) / 4,
+                y: (l[23].y + l[24].y + l[11].y + l[12].y) / 4
+            });
+
+            if (poses.length === 1) {
+                const pose = poses[0];
+                const hipX = (pose[23].x + pose[24].x) / 2;
+                if (!p1Current && !p2Current) {
+                    if (hipX < CONFIG.detection.splitScreenX) {
+                        p1Assigned = pose;
+                    } else {
+                        p2Assigned = pose;
+                    }
+                } else if (p1Current && !p2Current) {
+                    const d1 = Math.hypot(getCenter(pose).x - getCenter(p1Current).x, getCenter(pose).y - getCenter(p1Current).y);
+                    if (d1 < 0.3) {
+                        p1Assigned = pose;
+                    } else {
+                        if (hipX < CONFIG.detection.splitScreenX) p1Assigned = pose;
+                        else p2Assigned = pose;
+                    }
+                } else if (!p1Current && p2Current) {
+                    const d2 = Math.hypot(getCenter(pose).x - getCenter(p2Current).x, getCenter(pose).y - getCenter(p2Current).y);
+                    if (d2 < 0.3) {
+                        p2Assigned = pose;
+                    } else {
+                        if (hipX < CONFIG.detection.splitScreenX) p1Assigned = pose;
+                        else p2Assigned = pose;
+                    }
+                } else {
+                    const d1 = Math.hypot(getCenter(pose).x - getCenter(p1Current).x, getCenter(pose).y - getCenter(p1Current).y);
+                    const d2 = Math.hypot(getCenter(pose).x - getCenter(p2Current).x, getCenter(pose).y - getCenter(p2Current).y);
+                    if (d1 < d2) p1Assigned = pose;
+                    else p2Assigned = pose;
+                }
+            } else {
+                // 兩人同時存在
+                let poseA = poses[0];
+                let poseB = poses[1];
+
+                if (p1Current && p2Current) {
+                    const d1A = Math.hypot(getCenter(poseA).x - getCenter(p1Current).x, getCenter(poseA).y - getCenter(p1Current).y);
+                    const d1B = Math.hypot(getCenter(poseB).x - getCenter(p1Current).x, getCenter(poseB).y - getCenter(p1Current).y);
+                    if (d1A < d1B) {
+                        p1Assigned = poseA;
+                        p2Assigned = poseB;
+                    } else {
+                        p1Assigned = poseB;
+                        p2Assigned = poseA;
+                    }
+                } else {
+                    // 依據 X 座標初始分配
+                    let leftPose = poseA[23].x < poseB[23].x ? poseA : poseB;
+                    let rightPose = poseA[23].x < poseB[23].x ? poseB : poseA;
+                    p1Assigned = leftPose;
+                    p2Assigned = rightPose;
+                }
+            }
+
+            playerState.p1.tracking = p1Assigned;
+            playerState.p2.tracking = p2Assigned;
+            return { p1Landmarks: p1Assigned, p2Landmarks: p2Assigned };
         }
 
         async function predictWebcam() {
@@ -556,25 +635,15 @@
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-                let p1Landmarks = null;
-                let p2Landmarks = null;
-
-                if (poseResult.landmarks && poseResult.landmarks.length > 0) {
-                    for (const landmarks of poseResult.landmarks) {
-                        const hipX = (landmarks[23].x + landmarks[24].x) / 2;
-                        
-                        // 修正左右分界判定：小於 0.5 為左側 P1，大於 0.5 為右側 P2[cite: 5]
-                        if (hipX < CONFIG.detection.splitScreenX) {
-                            p1Landmarks = landmarks; 
-                        } else {
-                            p2Landmarks = landmarks; 
-                        }
-
-                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
-                        drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
-                    }
+                let rawPoses = poseResult.landmarks || [];
+                for (const landmarks of rawPoses) {
+                    drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
+                    drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
                 }
 
+                const { p1Landmarks, p2Landmarks } = updatePlayerTracking(rawPoses);
+
+                // 入鏡狀態訊息判定（獨立於動作與追蹤）
                 if (p1Landmarks && CONFIG.isBodyInFrame(p1Landmarks)) {
                     msgP1El.style.display = 'none';
                 } else {
@@ -589,38 +658,100 @@
                     msgP2El.innerText = p2Landmarks ? "請完整入鏡 (露出全身)" : "請入鏡";
                 }
 
+                // WAITING_FOR_NEUTRAL 階段：收集連續多幀站立 baseline
                 if (gameState === "WAITING_FOR_NEUTRAL") {
-                    let p1Ready = p1Landmarks ? CONFIG.neutralCheck(p1Landmarks) : false;
-                    let p2Ready = p2Landmarks ? CONFIG.neutralCheck(p2Landmarks) : false;
+                    let p1Ready = false;
+                    let p2Ready = false;
+
+                    if (p1Landmarks && CONFIG.neutralCheck(p1Landmarks)) {
+                        const hipY1 = (p1Landmarks[23].y + p1Landmarks[24].y) / 2;
+                        const b1 = playerState.p1.baseline;
+                        if (!b1.isInitialized) {
+                            b1.samples.push(hipY1);
+                            if (b1.samples.length >= 10) {
+                                const sum = b1.samples.reduce((a, b) => a + b, 0);
+                                b1.hipY = sum / b1.samples.length;
+                                b1.isInitialized = true;
+                            }
+                        }
+                        p1Ready = b1.isInitialized;
+                    }
+
+                    if (p2Landmarks && CONFIG.neutralCheck(p2Landmarks)) {
+                        const hipY2 = (p2Landmarks[23].y + p2Landmarks[24].y) / 2;
+                        const b2 = playerState.p2.baseline;
+                        if (!b2.isInitialized) {
+                            b2.samples.push(hipY2);
+                            if (b2.samples.length >= 10) {
+                                const sum = b2.samples.reduce((a, b) => a + b, 0);
+                                b2.hipY = sum / b2.samples.length;
+                                b2.isInitialized = true;
+                            }
+                        }
+                        p2Ready = b2.isInitialized;
+                    }
 
                     let everyoneReady = false;
                     if (p1Landmarks && p2Landmarks) {
-                        everyoneReady = p1Ready && p2Ready; 
+                        everyoneReady = p1Ready && p2Ready;
                     } else if (p1Landmarks || p2Landmarks) {
-                        everyoneReady = p1Ready || p2Ready; 
+                        everyoneReady = p1Ready || p2Ready;
                     }
 
-                    if (everyoneReady) {
-                        startCountdownPhase(p1Landmarks, p2Landmarks); 
+                    if (everyoneReady && (p1Landmarks ? playerState.p1.baseline.isInitialized : true) && (p2Landmarks ? playerState.p2.baseline.isInitialized : true)) {
+                        startCountdownPhase();
                     }
                 }
 
-                if (gameState === "PLAYING" && currentCommand) {
-                    let p1Success = p1Landmarks ? (currentCommand.text === "蹲下" ? currentCommand.check(p1Landmarks, 'p1') : currentCommand.check(p1Landmarks)) : false;
-                    let p2Success = p2Landmarks ? (currentCommand.text === "蹲下" ? currentCommand.check(p2Landmarks, 'p2') : currentCommand.check(p2Landmarks)) : false;
+                // PLAYING 階段與動作確認、debounce、連續 3 幀判斷
+                if (gameState === "PLAYING" && currentCommand && !roundScored) {
+                    let p1Success = false;
+                    let p2Success = false;
 
-                    if (p1Success || p2Success) {
-                        gameState = "ROUND_END"; 
-                        if (p1Success) {
-                            scoreP1++;
-                            scoreP1El.innerText = scoreP1;
-                            commandDisplay.style.color = "var(--success-color)";
-                            commandDisplay.innerText = "P1 得分！";
-                        } else if (p2Success) {
-                            scoreP2++;
-                            scoreP2El.innerText = scoreP2;
-                            commandDisplay.style.color = "var(--success-color)";
-                            commandDisplay.innerText = "P2 得分！";
+                    if (p1Landmarks) {
+                        let matched = currentCommand.text === "蹲下" ? currentCommand.check(p1Landmarks, 'p1') : currentCommand.check(p1Landmarks);
+                        if (matched) {
+                            playerState.p1.actionConfirm++;
+                        } else {
+                            playerState.p1.actionConfirm = 0;
+                        }
+                        if (playerState.p1.actionConfirm >= CONFIG.detection.actionConfirmFrames) {
+                            p1Success = true;
+                        }
+                    } else {
+                        playerState.p1.actionConfirm = 0;
+                    }
+
+                    if (p2Landmarks) {
+                        let matched = currentCommand.text === "蹲下" ? currentCommand.check(p2Landmarks, 'p2') : currentCommand.check(p2Landmarks);
+                        if (matched) {
+                            playerState.p2.actionConfirm++;
+                        } else {
+                            playerState.p2.actionConfirm = 0;
+                        }
+                        if (playerState.p2.actionConfirm >= CONFIG.detection.actionConfirmFrames) {
+                            p2Success = true;
+                        }
+                    } else {
+                        playerState.p2.actionConfirm = 0;
+                    }
+
+                    if ((p1Success || p2Success) && !roundScored) {
+                        roundScored = true;
+                        gameState = "ROUND_END";
+
+                        if (p1Success && (!p2Success || true)) { // 優先或同時達成時以 P1/P2 先後判定
+                            if (p1Success) {
+                                scoreP1++;
+                                scoreP1El.innerText = scoreP1;
+                                commandDisplay.style.color = "var(--success-color)";
+                                commandDisplay.innerText = "P1 得分！";
+                            } else {
+                                scoreP2++;
+                                scoreP2El.innerText = scoreP2;
+                                commandDisplay.style.color = "var(--success-color)";
+                                commandDisplay.innerText = "P2 得分！";
+                            }
                         }
                         setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
                     }
