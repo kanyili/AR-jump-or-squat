@@ -4,10 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>雙人 AR 反應速度遊戲 - Pose Prototype</title>
-    <!-- 引入 MediaPipe Tasks Vision 函式庫 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
-        /* === 1. 基礎設定與重置 === */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -24,7 +21,6 @@
             color: #ffffff;
         }
 
-        /* === 2. 橫向強制提示遮罩 (直向時顯示) === */
         #rotate-warning {
             display: none;
             position: fixed;
@@ -59,7 +55,6 @@
             }
         }
 
-        /* === 3. 遊戲主容器與三層架構 (Z-index Layering) === */
         #game-container {
             position: relative;
             width: 100vw;
@@ -67,7 +62,6 @@
             overflow: hidden;
         }
 
-        /* Layer 1: 最底層 - 攝影機背景 */
         #webcam-video {
             position: absolute;
             top: 0;
@@ -79,7 +73,6 @@
             z-index: 1;
         }
 
-        /* Layer 2: 中間層 - Canvas 骨架畫布 */
         #game-canvas {
             position: absolute;
             top: 0;
@@ -91,7 +84,6 @@
             transform: scaleX(-1);
         }
 
-        /* Layer 3: 最上層 - 介面 HUD */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -108,7 +100,6 @@
             pointer-events: auto;
         }
 
-        /* === 4. 版面配置：左右 45% 與中間 10% === */
         .player-zone {
             width: 45%;
             height: 100%;
@@ -137,7 +128,6 @@
             border-right: 1px solid rgba(0, 243, 255, 0.2);
         }
 
-        /* === 5. UI 元件樣式 === */
         .player-header {
             font-size: 1.2rem;
             font-weight: bold;
@@ -186,10 +176,11 @@
             justify-content: center;
             align-items: center;
             transition: opacity 0.3s ease;
+            padding: 20px;
         }
 
         .game-title {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: 900;
             color: #00f3ff;
             margin-bottom: 20px;
@@ -201,17 +192,19 @@
             background: linear-gradient(135deg, #00f3ff, #0066ff);
             color: #ffffff;
             border: none;
-            padding: 15px 40px;
-            font-size: 1.2rem;
+            padding: 15px 30px;
+            font-size: 1rem;
             font-weight: bold;
             border-radius: 30px;
             cursor: pointer;
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
+            max-width: 90vw;
+            word-break: break-all;
         }
         
         .btn-primary:disabled {
             background: #2a3b4c;
-            color: #7a8b9c;
+            color: #ff8080;
             box-shadow: none;
             cursor: not-allowed;
         }
@@ -219,22 +212,16 @@
 </head>
 <body>
 
-    <!-- 1. 橫向轉動提示 -->
     <div id="rotate-warning">
         <div class="icon">📱</div>
         <h2>請將手機轉為橫向</h2>
         <p>本遊戲需使用橫向畫面進行雙人 AR 互動</p>
     </div>
 
-    <!-- 2. 遊戲主畫面 -->
     <div id="game-container">
-        <!-- Layer 1: 攝影機背景 -->
         <video id="webcam-video" autoplay playsinline muted></video>
-
-        <!-- Layer 2: 骨架畫布 -->
         <canvas id="game-canvas"></canvas>
 
-        <!-- Layer 3: 介面 HUD -->
         <div id="ui-layer">
             <div class="player-zone" id="zone-p1">
                 <div class="player-header">PLAYER 1</div>
@@ -253,15 +240,16 @@
             </div>
         </div>
 
-        <!-- 遊戲開始覆蓋選單 -->
         <div id="overlay-screen" class="interactive">
             <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
-            <button class="btn-primary" id="start-btn" disabled>正在初始化元件...</button>
+            <button class="btn-primary" id="start-btn" disabled>正在初始化模組...</button>
         </div>
     </div>
 
-    <!-- AI 模型初始化與辨識邏輯 -->
-    <script>
+    <!-- 改用標準 ESM 模組引入方式 -->
+    <script type="module">
+        import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
+
         let poseLandmarker = undefined;
         let webcamRunning = false;
         let lastVideoTime = -1;
@@ -271,24 +259,18 @@
         const webcamVideo = document.getElementById('webcam-video');
         const canvasElement = document.getElementById('game-canvas');
         const canvasCtx = canvasElement.getContext('2d');
-
-        let drawingUtils = null;
+        const drawingUtils = new DrawingUtils(canvasCtx);
 
         async function preloadModel() {
             try {
-                if (typeof vision === 'undefined') {
-                    throw new Error("MediaPipe 函式庫載入失敗，請檢查網路連線");
-                }
-                const { PoseLandmarker, FilesetResolver, DrawingUtils } = vision;
-                drawingUtils = new DrawingUtils(canvasCtx);
-
-                startBtn.innerText = "正在載入雲端 AI 模型...";
+                startBtn.innerText = "正在載入 WASM 執行檔...";
 
                 const visionFilesetResolver = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
                 );
 
-                // 改為直接讀取 Google 官方穩定的雲端模型網址，避開 GitHub 檔案解析問題
+                startBtn.innerText = "正在載入 AI 模型...";
+
                 poseLandmarker = await PoseLandmarker.createFromOptions(visionFilesetResolver, {
                     baseOptions: {
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
@@ -304,13 +286,11 @@
 
             } catch (err) {
                 console.error("AI 模型載入失敗:", err);
-                startBtn.innerText = "載入失敗，請檢查網路或重新整理";
+                startBtn.innerText = "錯誤: " + (err.message || err);
             }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            preloadModel();
-        });
+        preloadModel();
 
         startBtn.addEventListener('click', async () => {
             if (!poseLandmarker) return;
@@ -340,7 +320,7 @@
 
             } catch (err) {
                 console.error('無法存取攝影機:', err);
-                alert('無法啟用攝影機，請檢查 Safari 相機權限設定。');
+                alert('無法啟用攝影機，請檢查相機權限設定。');
             }
         });
 
@@ -361,7 +341,7 @@
 
                 if (poseResult.landmarks && drawingUtils) {
                     for (const landmarks of poseResult.landmarks) {
-                        drawingUtils.drawConnectors(landmarks, vision.PoseLandmarker.POSE_CONNECTIONS, {
+                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
                             color: '#00F3FF',
                             lineWidth: 3
                         });
