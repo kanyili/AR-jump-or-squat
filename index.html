@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>雙人 AR 反應速度遊戲</title>
+    <style>
+        /* === 1. 基礎設定與重置 === */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0f19;
+            color: #ffffff;
+        }
+
+        /* === 2. 橫向強制提示遮罩 (直向時顯示) === */
+        #rotate-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(11, 15, 25, 0.95);
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #rotate-warning .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            animation: rotatePhone 2s infinite ease-in-out;
+        }
+
+        @keyframes rotatePhone {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(90deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* 偵測直向時強制顯示遮罩 */
+        @media screen and (orientation: portrait) {
+            #rotate-warning {
+                display: flex;
+            }
+        }
+
+        /* === 3. 遊戲主容器與三層架構 (Z-index Layering) === */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layer 1: 最底層 - 攝影機背景 */
+        #webcam-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 前鏡頭水平鏡像翻轉 */
+            z-index: 1;
+        }
+
+        /* Layer 2: 中間層 - Canvas 骨架與特效繪製 */
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none; /* 確保點擊事件能穿透到 UI */
+        }
+
+        /* Layer 3: 最上層 - 介面 HUD (Player Zones, Scores, Commands) */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            display: flex;
+            flex-direction: row;
+            pointer-events: none; /* 預設穿透，互動按鈕再額外開啟 */
+        }
+
+        /* 讓按鈕與互動元件可以點擊 */
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* === 4. 版面配置：左右 45% 與中間 10% === */
+        .player-zone {
+            width: 45%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+            border: 2px dashed rgba(0, 243, 255, 0.2);
+        }
+
+        #zone-p1 {
+            border-right: none;
+        }
+
+        #zone-p2 {
+            border-left: none;
+        }
+
+        .center-hud {
+            width: 10%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(11, 15, 25, 0.4);
+            backdrop-filter: blur(4px);
+            border-left: 1px solid rgba(0, 243, 255, 0.2);
+            border-right: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        /* === 5. UI 元件樣式 (科技風 HUD) === */
+        .player-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #00f3ff;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .player-score {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+            margin-bottom: 15px;
+        }
+
+        .player-status-msg {
+            background: rgba(255, 77, 77, 0.8);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
+            display: none; /* 依狀態切換顯示 */
+        }
+
+        /* 中央指令看板 */
+        #command-display {
+            font-size: 4rem;
+            font-weight: 900;
+            color: #00f3ff;
+            text-shadow: 0 0 20px #00f3ff, 0 0 40px #00f3ff;
+            letter-spacing: 4px;
+            text-align: center;
+        }
+
+        /* 全螢幕覆蓋狀態層 (如：倒數、暫停、起始畫面、結算) */
+        #overlay-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            background: rgba(11, 15, 25, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s ease;
+        }
+
+        .game-title {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #00f3ff;
+            margin-bottom: 20px;
+            text-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00f3ff, #0066ff);
+            color: #ffffff;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 橫向轉動提示 -->
+    <div id="rotate-warning">
+        <div class="icon">📱</div>
+        <h2>請將手機轉為橫向</h2>
+        <p>本遊戲需使用橫向畫面進行雙人 AR 互動</p>
+    </div>
+
+    <!-- 2. 遊戲主畫面 -->
+    <div id="game-container">
+        <!-- Layer 1: 攝影機串流背景 -->
+        <video id="webcam-video" autoplay playsinline muted></video>
+
+        <!-- Layer 2: 骨架與特效畫布 -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Layer 3: 介面 HUD -->
+        <div id="ui-layer">
+            <!-- 玩家 1 區域 (左側 45%) -->
+            <div class="player-zone" id="zone-p1">
+                <div class="player-header">PLAYER 1</div>
+                <div class="player-score" id="score-p1">0</div>
+                <!-- 狀態提示（例如：請往後站 / 雙腳入鏡） -->
+                <div class="player-status-msg" id="msg-p1">請讓雙腳入鏡</div>
+            </div>
+
+            <!-- 中央比分與指令區 (10%) -->
+            <div class="center-hud">
+                <div id="command-display">READY</div>
+            </div>
+
+            <!-- 玩家 2 區域 (右側 45%) -->
+            <div class="player-zone" id="zone-p2">
+                <div class="player-header">PLAYER 2</div>
+                <div class="player-score" id="score-p2">0</div>
+                <!-- 狀態提示 -->
+                <div class="player-status-msg" id="msg-p2">請讓雙腳入鏡</div>
+            </div>
+        </div>
+
+        <!-- 遊戲開始 / 結束覆蓋選單 (初始預設顯示) -->
+        <div id="overlay-screen" class="interactive">
+            <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
+            <button class="btn-primary" id="start-btn">開始遊戲</button>
+        </div>
+    </div>
+
+</body>
+</html>
