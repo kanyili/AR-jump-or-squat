@@ -271,5 +271,47 @@
         </div>
     </div>
 
+<!-- 補上 JavaScript 邏輯來處理點擊與攝影機開啟 -->
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const overlayScreen = document.getElementById('overlay-screen');
+        const webcamVideo = document.getElementById('webcam-video');
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                // 1. 要求 iPhone 前鏡頭權限
+                const constraints = {
+                    video: {
+                        facingMode: 'user', // 指定前鏡頭
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // 2. 將攝影機串流餵給 video 元素
+                webcamVideo.srcObject = stream;
+                await webcamVideo.play();
+
+                // 3. 成功取得權限後，淡出並隱藏封面選單
+                overlayScreen.style.opacity = '0';
+                setTimeout(() => {
+                    overlayScreen.style.display = 'none';
+                }, 300);
+
+                console.log('攝影機啟動成功，進入遊戲準備階段');
+                // 之後這裡可以接續初始化 Pose Detection AI 模型與遊戲邏輯
+
+            } catch (err) {
+                console.error('無法存取攝影機:', err);
+                alert('無法啟用攝影機，請檢查 Safari 權限設定是否允許存取相機。');
+            }
+        });
+    </script>
+</body>
+</html>
+
 </body>
 </html>
