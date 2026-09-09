@@ -112,7 +112,7 @@
         }
 
         .player-zone {
-            width: 45%;
+            width: 42%;
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -127,12 +127,13 @@
         #zone-p2 { border-left: none; }
 
         .center-hud {
-            width: 10%;
+            width: 16%;
             height: 100%;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
+            padding: 15px 5px;
             background: var(--hud-bg);
             backdrop-filter: blur(4px);
             border-left: 1px solid var(--border-glow);
@@ -190,6 +191,15 @@
             text-shadow: 0 0 20px var(--primary-color);
             text-align: center;
             line-height: 1.4;
+            margin: auto;
+        }
+
+        /* 版本時間標記樣式 */
+        #version-stamp {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 0.5px;
+            white-space: nowrap;
         }
 
         #overlay-screen {
@@ -258,7 +268,9 @@
             </div>
 
             <div class="center-hud">
+                <div></div> <!-- 佔位用保持置中 -->
                 <div id="command-display">等待雙人入鏡</div>
+                <div id="version-stamp">2026-06-06 16:00:00</div>
             </div>
 
             <div class="player-zone" id="zone-p2">
@@ -288,10 +300,10 @@
             detection: {
                 visibilityThreshold: 0.3,   
                 neutralCrouchMax: 0.70,      
-                squatKneeAngleMax: 145,      
-                squatMinHipDropRatio: 0.05,  
-                squatHistoryFrames: 8,       
-                actionConfirmFrames: 3,      
+                squatKneeAngleMax: 165,      // 已放寬膝蓋角度判定，修正蹲下識別
+                squatMinHipDropRatio: 0.02,  
+                squatHistoryFrames: 5,       
+                actionConfirmFrames: 2,      
                 handDownTolerance: 0.05,     
                 handRaiseMinDelta: 0.04,
                 handRaiseMinMove: 0.04       
@@ -387,8 +399,6 @@
                         if (!CONFIG.isLandmarkPositionValid(l, 23) || !CONFIG.isLandmarkPositionValid(l, 24) || 
                             !CONFIG.isLandmarkPositionValid(l, 11) || !CONFIG.isLandmarkPositionValid(l, 12)) return false;
 
-                        const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const shoulder = { x: (l[11].x + l[12].x) / 2, y: (l[11].y + l[12].y) / 2 };
                         const hip = { x: (l[23].x + l[24].x) / 2, y: (l[23].y + l[24].y) / 2 };
 
                         let knee = null, ankle = null;
@@ -400,20 +410,6 @@
                             ankle = { x: l[28].x, y: l[28].y };
                         }
                         if (!knee || !ankle) return false;
-
-                        const torsoLen = dist(shoulder, hip);
-                        const thighLen = dist(hip, knee);
-                        const shinLen = dist(knee, ankle);
-                        const bodyScale = torsoLen + thighLen + shinLen;
-
-                        if (bodyScale <= 0) return false;
-
-                        const baseline = playerState[playerKey].baseline;
-                        if (!baseline.isInitialized || baseline.hipY === 0) return false;
-
-                        const hipDrop = hip.y - baseline.hipY; 
-                        const hipDropRatio = hipDrop / bodyScale;
-                        const hipDropped = hipDropRatio > CONFIG.detection.squatMinHipDropRatio;
 
                         const getAngle = (a, b, c) => {
                             const ab = { x: a.x - b.x, y: a.y - b.y };
@@ -427,25 +423,7 @@
                         };
 
                         const kneeAngle = getAngle(hip, knee, ankle);
-                        const kneeBent = kneeAngle < CONFIG.detection.squatKneeAngleMax;
-
-                        const history = playerState[playerKey].squatHistory;
-                        history.push(hip.y);
-                        if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
-
-                        let hasDescendedFromHistory = false;
-                        if (history.length >= 4) {
-                            let increasingCount = 0;
-                            for (let i = 1; i < history.length; i++) {
-                                if (history[i] > history[i - 1]) {
-                                    increasingCount++;
-                                }
-                            }
-                            const overallDrop = history[history.length - 1] - history[0];
-                            hasDescendedFromHistory = (overallDrop > bodyScale * 0.015) && (increasingCount <= history.length / 2);
-                        }
-
-                        return hipDropped && kneeBent && hasDescendedFromHistory;
+                        return kneeAngle < CONFIG.detection.squatKneeAngleMax;
                     } 
                 }
             ],
