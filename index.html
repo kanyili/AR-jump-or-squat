@@ -269,28 +269,28 @@
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
         // ==========================================
-        // 集中設定檔 (Game Configuration)
-        // 集中管理參數、可見度門檻與動作判定
+        // 集中設定檔 (Game Configuration)[cite: 5]
+        // 集中管理參數、可見度門檻與動作判定[cite: 5]
         // ==========================================
         const CONFIG = {
-            // 1. 時間間隔設定 (毫秒)
+            // 1. 時間間隔設定 (毫秒)[cite: 5]
             timing: {
-                countdownDelay: 1500, // 「準備...」到出題的等待時間
-                roundEndDelay: 2000   // 分出勝負後、進入下一局前的暫停時間
+                countdownDelay: 1500, // 「準備...」到出題的等待時間[cite: 5]
+                roundEndDelay: 2000   // 分出勝負後、進入下一局前的暫停時間[cite: 5]
             },
             
-            // 2. 畫面範圍與信心分數門檻設定
+            // 2. 畫面範圍與信心分數門檻設定[cite: 5]
             detection: {
-                splitScreenX: 0.5,           // 左右玩家分界線 (0.5 代表畫面正中央)
-                neutralCrouchMax: 0.60,      // 中立站姿時，髖部的最高位置界線
-                visibilityThreshold: 0.6,    // 動作判定的關節可見度信心門檻
-                squatKneeAngleMax: 142,      // 膝蓋彎曲角度門檻 (雙腿平均或單腿小於此角度)
-                squatHipKneeRatioMax: 0.65,  // 3D 歐幾里得距離比例門檻 (hip-knee / (hip-knee + knee-ankle))
-                squatMinHipDropRatio: 0.08,  // 相對身高的最小髖部下降比例
-                squatHistoryFrames: 8        // 歷史軌跡幀數
+                splitScreenX: 0.5,           // 左右玩家分界線 (0.5 代表畫面正中央)[cite: 5]
+                neutralCrouchMax: 0.60,      // 中立站姿時，髖部的最高位置界線[cite: 5]
+                visibilityThreshold: 0.4,    // 動作判定的關節可見度信心門檻 (已從 0.6 調降)[cite: 5]
+                squatKneeAngleMax: 142,      // 膝蓋彎曲角度門檻 (雙腿平均或單腿小於此角度)[cite: 5]
+                squatHipKneeRatioMax: 0.65,  // 3D 歐幾里得距離比例門檻 (hip-knee / (hip-knee + knee-ankle))[cite: 5]
+                squatMinHipDropRatio: 0.08,  // 相對身高的最小髖部下降比例[cite: 5]
+                squatHistoryFrames: 8        // 歷史軌跡幀數[cite: 5]
             },
             
-            // 3. 偵測動作的新增定義區 (加入 3D 歐幾里得比例、站立基準、動態歷史下降與防彎腰檢查)
+            // 3. 偵測動作的新增定義區 (加入 3D 歐幾里得比例、站立基準、動態歷史下降與防彎腰檢查)[cite: 5]
             commands: [
                 { 
                     text: "舉左手", 
@@ -313,7 +313,7 @@
                     check: (l, playerKey = 'p1') => {
                         const t = CONFIG.detection.visibilityThreshold;
 
-                        // 嚴格檢查重要關節 visibility
+                        // 嚴格檢查重要關節 visibility[cite: 5]
                         if (
                             (l[11].visibility ?? 0) < t || (l[12].visibility ?? 0) < t || // 肩膀
                             (l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t || // 髖部
@@ -323,7 +323,7 @@
                             return false;
                         }
 
-                        // 輔助計算 2D 歐幾里得距離
+                        // 輔助計算 2D 歐幾里得距離[cite: 5]
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
                         const shoulder = { x: (l[11].x + l[12].x) / 2, y: (l[11].y + l[12].y) / 2 };
@@ -338,20 +338,20 @@
 
                         if (bodyScale <= 0) return false;
 
-                        // 1. 取得玩家獨立站立基準
+                        // 1. 取得玩家獨立站立基準[cite: 5]
                         const baseline = squatBaseline[playerKey];
                         if (!baseline || !baseline.isInitialized) {
-                            // 若尚未初始化基準，先以當前幀建立預設基準
+                            // 若尚未初始化基準，先以當前幀建立預設基準[cite: 5]
                             baseline.hipY = hip.y;
                             baseline.isInitialized = true;
                         }
 
-                        // 2. 檢查相對身高的最小髖部下降量 (確保有明顯下降)
-                        const hipDrop = hip.y - baseline.hipY; // 畫面往下 y 變大
+                        // 2. 檢查相對身高的最小髖部下降量 (確保有明顯下降)[cite: 5]
+                        const hipDrop = hip.y - baseline.hipY; // 畫面往下 y 變大[cite: 5]
                         const hipDropRatio = hipDrop / bodyScale;
                         const hasDropped = hipDropRatio > CONFIG.detection.squatMinHipDropRatio;
 
-                        // 3. 計算 3D 尺度不敏感的比例 (hip-knee / (hip-knee + knee-ankle))
+                        // 3. 計算 3D 尺度不敏感的比例 (hip-knee / (hip-knee + knee-ankle))[cite: 5]
                         const leftThigh = dist(l[23], l[25]);
                         const leftShin = dist(l[25], l[27]);
                         const rightThigh = dist(l[24], l[26]);
@@ -362,7 +362,7 @@
                         const avgRatio = (leftRatio + rightRatio) / 2;
                         const isRatioValid = avgRatio < CONFIG.detection.squatHipKneeRatioMax;
 
-                        // 4. 計算左右膝蓋彎曲角度
+                        // 4. 計算左右膝蓋彎曲角度[cite: 5]
                         const getAngle = (a, b, c) => {
                             const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
                             let angle = Math.abs(radians * 180.0 / Math.PI);
@@ -376,7 +376,7 @@
                         const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
                         const isKneeBent = minKneeAngle < CONFIG.detection.squatKneeAngleMax || avgKneeAngle < CONFIG.detection.squatKneeAngleMax;
 
-                        // 5. 短期歷史下降軌跡檢查 (確認曾經從站立位置下降，而非一直蹲著或單純彎腰)
+                        // 5. 短期歷史下降軌跡檢查 (確認曾經從站立位置下降，而非一直蹲著或單純彎腰)[cite: 5]
                         let hasDescendedFromHistory = true;
                         if (playerKey) {
                             const history = squatHistory[playerKey];
@@ -389,13 +389,13 @@
                             if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
                         }
 
-                        // 綜合多重條件 AND 確保排除彎腰與誤判
+                        // 綜合多重條件 AND 確保排除彎腰與誤判[cite: 5]
                         return hasDropped && isRatioValid && isKneeBent && hasDescendedFromHistory;
                     } 
                 }
             ],
             
-            // 4. 中立姿勢與全身入鏡檢查邏輯
+            // 4. 中立姿勢與全身入鏡檢查邏輯[cite: 5]
             neutralCheck: function(l) {
                 const t = 0.55; 
                 const isFullyVisible = 
@@ -414,7 +414,7 @@
                 return leftHandDown && rightHandDown && notCrouching;
             },
 
-            // 5. 快速完整入鏡檢查
+            // 5. 快速完整入鏡檢查 (門檻已調低至 0.4)[cite: 5]
             isBodyInFrame: function(l) {
                 if (!l) return false;
                 const t = 0.4; 
@@ -425,7 +425,7 @@
             }
         };
 
-        // P1 / P2 獨立歷史紀錄與站立基準變數 (完全隔離，互不干擾)
+        // P1 / P2 獨立歷史紀錄與站立基準變數 (完全隔離，互不干擾)[cite: 5]
         const squatHistory = {
             p1: [],
             p2: []
@@ -505,7 +505,7 @@
         function startNeutralCheckPhase() {
             gameState = "WAITING_FOR_NEUTRAL";
             currentCommand = null;
-            // 清空歷史紀錄與基準，準備重新抓取站立基準
+            // 清空歷史紀錄與基準，準備重新抓取站立基準[cite: 5]
             squatHistory.p1 = [];
             squatHistory.p2 = [];
             squatBaseline.p1.isInitialized = false;
@@ -519,7 +519,7 @@
             squatHistory.p1 = [];
             squatHistory.p2 = [];
 
-            // 在倒數階段鎖定並記錄 P1/P2 各自的站立基準
+            // 在倒數階段鎖定並記錄 P1/P2 各自的站立基準[cite: 5]
             if (p1Landmarks) {
                 squatBaseline.p1.hipY = (p1Landmarks[23].y + p1Landmarks[24].y) / 2;
                 squatBaseline.p1.isInitialized = true;
@@ -562,7 +562,9 @@
                 if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
                         const hipX = (landmarks[23].x + landmarks[24].x) / 2;
-                        if (hipX > CONFIG.detection.splitScreenX) {
+                        
+                        // 修正左右分界判定：小於 0.5 為左側 P1，大於 0.5 為右側 P2[cite: 5]
+                        if (hipX < CONFIG.detection.splitScreenX) {
                             p1Landmarks = landmarks; 
                         } else {
                             p2Landmarks = landmarks; 
