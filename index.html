@@ -322,6 +322,7 @@
         function startNewRound() {
             if (gameState === "PLAYING") return;
             gameState = "COUNTDOWN";
+            currentCommand = null; // 清空當前指令，確保準備期間無法被比對
             commandDisplay.style.color = "#00f3ff";
             commandDisplay.innerText = "準備...";
             
@@ -329,7 +330,7 @@
                 if (!webcamRunning) return;
                 const randomCmd = commands[Math.floor(Math.random() * commands.length)];
                 currentCommand = randomCmd;
-                gameState = "PLAYING";
+                gameState = "PLAYING"; // 只有在此狀態下才正式開放判定
                 commandDisplay.style.color = "#ff0055";
                 commandDisplay.innerText = randomCmd.text;
             }, 1500);
@@ -367,7 +368,7 @@
                     }
                 }
 
-                // 遊戲判定邏輯
+                // 遊戲判定邏輯：嚴格檢查 gameState 為 "PLAYING" 且 currentCommand 存在才進行比對
                 if (gameState === "PLAYING" && currentCommand) {
                     let p1Success = p1Landmarks ? currentCommand.check(p1Landmarks) : false;
                     let p2Success = p2Landmarks ? currentCommand.check(p2Landmarks) : false;
