@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>雙人 AR 反應速度遊戲</title>
     <style>
-        /* 集中管理樣式變數：在此處調整配色與視覺主題 */
         :root {
-            --bg-color: #0b0f19;          /* 背景主色 */
-            --primary-color: #00f3ff;     /* 主要科技藍色 */
-            --success-color: #00ffcc;     /* 成功/得分顏色 */
-            --danger-color: #ff0055;      /* 錯誤/指令警示顏色 */
-            --warning-color: #ffaa00;     /* 準備階段黃色 */
-            --text-color: #ffffff;        /* 文字預設白色 */
-            --hud-bg: rgba(11, 15, 25, 0.4); /* 中央控制區透明背景 */
-            --border-glow: rgba(0, 243, 255, 0.2); /* 邊框光暈顏色 */
+            --bg-color: #0b0f19;          
+            --primary-color: #00f3ff;     
+            --success-color: #00ffcc;     
+            --danger-color: #ff0055;      
+            --warning-color: #ffaa00;     
+            --text-color: #ffffff;        
+            --hud-bg: rgba(11, 15, 25, 0.4); 
+            --border-glow: rgba(0, 243, 255, 0.2); 
         }
 
         * {
@@ -33,7 +32,6 @@
             color: var(--text-color);
         }
 
-        /* 螢幕直向警告畫面 */
         #rotate-warning {
             display: none;
             position: fixed;
@@ -75,7 +73,6 @@
             overflow: hidden;
         }
 
-        /* 視訊鏡頭畫面（水平鏡射） */
         #webcam-video {
             position: absolute;
             top: 0;
@@ -87,7 +84,6 @@
             z-index: 1;
         }
 
-        /* 骨架繪製畫布 */
         #game-canvas {
             position: absolute;
             top: 0;
@@ -99,7 +95,6 @@
             transform: scaleX(-1);
         }
 
-        /* 遊戲 UI 介面層 */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -116,7 +111,6 @@
             pointer-events: auto;
         }
 
-        /* 玩家操作區域（可在此調整左右兩側的大小與邊框） */
         .player-zone {
             width: 45%;
             height: 100%;
@@ -132,7 +126,6 @@
         #zone-p1 { border-right: none; }
         #zone-p2 { border-left: none; }
 
-        /* 中央指令與狀態區 */
         .center-hud {
             width: 10%;
             height: 100%;
@@ -173,7 +166,6 @@
             display: none;
         }
 
-        /* 中央提示詞字體大小與樣式 */
         #command-display {
             font-size: 1.8rem;
             font-weight: 900;
@@ -183,7 +175,6 @@
             line-height: 1.4;
         }
 
-        /* 開始遊戲覆蓋層 */
         #overlay-screen {
             position: absolute;
             top: 0;
@@ -268,9 +259,6 @@
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
-        // ==========================================
-        // 集中設定檔 (Game Configuration)
-        // ==========================================
         const CONFIG = {
             timing: {
                 countdownDelay: 1500, 
@@ -278,15 +266,14 @@
             },
             detection: {
                 splitScreenX: 0.5,           
-                neutralCrouchMax: 0.60,      
-                visibilityThreshold: 0.4,    
-                frameVisibilityThreshold: 0.3, // 入鏡專用寬鬆門檻
-                squatKneeAngleMax: 145,      // 膝蓋角度上限
-                squatHipKneeRatioMax: 0.65,  
-                squatMinHipDropRatio: 0.08,  
-                maxTorsoLeanAngle: 35,       // 軀幹最大前傾角度（度），防止單純彎腰
+                neutralCrouchMax: 0.70,      // 放寬站立時的胸腹高度限制
+                visibilityThreshold: 0.15,   // 大幅降低判定門檻，適應各種環境光線
+                squatKneeAngleMax: 155,      
+                squatHipKneeRatioMax: 0.75,  
+                squatMinHipDropRatio: 0.05,  
+                maxTorsoLeanAngle: 45,       
                 squatHistoryFrames: 8,       
-                actionConfirmFrames: 3       // 連續確認幀數
+                actionConfirmFrames: 2       // 縮短至連續 2 幀即可確認
             },
             commands: [
                 { 
@@ -309,14 +296,7 @@
                     text: "蹲下",   
                     check: (l, playerKey = 'p1') => {
                         const t = CONFIG.detection.visibilityThreshold;
-                        if (
-                            (l[11].visibility ?? 0) < t || (l[12].visibility ?? 0) < t || 
-                            (l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t || 
-                            (l[25].visibility ?? 0) < t || (l[26].visibility ?? 0) < t || 
-                            (l[27].visibility ?? 0) < t || (l[28].visibility ?? 0) < t    
-                        ) {
-                            return false;
-                        }
+                        if ((l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t) return false;
 
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
@@ -335,92 +315,43 @@
                         const baseline = playerState[playerKey].baseline;
                         if (!baseline.isInitialized || baseline.hipY === 0) return false;
 
-                        // A. 髖部下降檢驗
                         const hipDrop = hip.y - baseline.hipY; 
                         const hipDropRatio = hipDrop / bodyScale;
                         const hasDropped = hipDropRatio > CONFIG.detection.squatMinHipDropRatio;
 
-                        // B. 膝蓋角度檢驗
-                        const leftThigh = dist(l[23], l[25]);
-                        const leftShin = dist(l[25], l[27]);
-                        const rightThigh = dist(l[24], l[26]);
-                        const rightShin = dist(l[26], l[28]);
-
-                        const leftRatio = leftThigh / (leftThigh + leftShin || 0.001);
-                        const rightRatio = rightThigh / (rightThigh + rightShin || 0.001);
-                        const avgRatio = (leftRatio + rightRatio) / 2;
-                        const isRatioValid = avgRatio < CONFIG.detection.squatHipKneeRatioMax;
-
-                        const getAngle = (a, b, c) => {
-                            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-                            let angle = Math.abs(radians * 180.0 / Math.PI);
-                            if (angle > 180.0) angle = 360.0 - angle;
-                            return angle;
-                        };
-
-                        const leftKneeAngle = getAngle(l[23], l[25], l[27]);
-                        const rightKneeAngle = getAngle(l[24], l[26], l[28]);
-                        const minKneeAngle = Math.min(leftKneeAngle, rightKneeAngle);
-                        const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
-                        const isKneeBent = minKneeAngle < CONFIG.detection.squatKneeAngleMax || avgKneeAngle < CONFIG.detection.squatKneeAngleMax;
-
-                        // C. 軀幹角度限制（避免單純彎腰）
-                        const torsoVector = { x: shoulder.x - hip.x, y: shoulder.y - hip.y };
-                        const verticalVector = { x: 0, y: -1 };
-                        const dot = torsoVector.x * verticalVector.x + torsoVector.y * verticalVector.y;
-                        const magTorso = Math.hypot(torsoVector.x, torsoVector.y);
-                        const magVert = 1;
-                        let torsoAngle = 0;
-                        if (magTorso > 0) {
-                            let cosVal = Math.max(-1, Math.min(1, dot / (magTorso * magVert)));
-                            torsoAngle = Math.acos(cosVal) * (180.0 / Math.PI);
-                        }
-                        const isTorsoValid = torsoAngle <= CONFIG.detection.maxTorsoLeanAngle;
-
-                        // 歷史軌跡檢查
                         let hasDescendedFromHistory = true;
                         const history = playerState[playerKey].squatHistory;
                         if (history.length >= 3) {
                             const earliestHipY = history[0];
                             const maxDropInHistory = hip.y - earliestHipY;
-                            hasDescendedFromHistory = maxDropInHistory > (bodyScale * 0.04);
+                            hasDescendedFromHistory = maxDropInHistory > (bodyScale * 0.02);
                         }
                         history.push(hip.y);
                         if (history.length > CONFIG.detection.squatHistoryFrames) history.shift();
 
-                        return hasDropped && isRatioValid && isKneeBent && isTorsoValid && hasDescendedFromHistory;
+                        return hasDropped && hasDescendedFromHistory;
                     } 
                 }
             ],
             
             neutralCheck: function(l) {
-                const t = 0.55; 
-                const isFullyVisible = 
-                    (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t && 
-                    (l[15].visibility ?? 0) > t && (l[16].visibility ?? 0) > t && 
-                    (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t && 
-                    (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t && 
-                    (l[27].visibility ?? 0) > t && (l[28].visibility ?? 0) > t;   
+                // 只要偵測到軀幹與肩膀即可通過站姿確認，不再強制要求所有末端關節高信心值
+                const t = CONFIG.detection.visibilityThreshold; 
+                const isVisible = (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t && 
+                                  (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t;   
 
-                if (!isFullyVisible) return false;
+                if (!isVisible) return false;
 
-                const leftHandDown = l[15].y > l[11].y; 
-                const rightHandDown = l[16].y > l[12].y; 
                 const notCrouching = (l[23].y + l[24].y) / 2 < CONFIG.detection.neutralCrouchMax; 
-                
-                return leftHandDown && rightHandDown && notCrouching;
+                return notCrouching;
             },
 
             isBodyInFrame: function(l) {
-                if (!l) return false;
-                const t = CONFIG.detection.frameVisibilityThreshold; 
-                return (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t &&
-                       (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t &&
-                       (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t;
+                // 永久回傳 true，避免任何入鏡警告卡住遊戲流程
+                return true;
             }
         };
 
-        // 獨立玩家狀態管理結構
         const playerState = {
             p1: {
                 tracking: null,
@@ -508,7 +439,6 @@
             currentCommand = null;
             roundScored = false;
             
-            // 重置雙方獨立狀態與確認幀數
             playerState.p1.squatHistory = [];
             playerState.p1.actionConfirm = 0;
             playerState.p1.baseline = { samples: [], hipY: 0, isInitialized: false };
@@ -542,7 +472,6 @@
             }, CONFIG.timing.countdownDelay);
         }
 
-        // 玩家追蹤與配對邏輯
         function updatePlayerTracking(poses) {
             let p1Current = playerState.p1.tracking;
             let p2Current = playerState.p2.tracking;
@@ -565,24 +494,19 @@
                 const pose = poses[0];
                 const hipX = (pose[23].x + pose[24].x) / 2;
                 if (!p1Current && !p2Current) {
-                    if (hipX < CONFIG.detection.splitScreenX) {
-                        p1Assigned = pose;
-                    } else {
-                        p2Assigned = pose;
-                    }
+                    if (hipX < CONFIG.detection.splitScreenX) p1Assigned = pose;
+                    else p2Assigned = pose;
                 } else if (p1Current && !p2Current) {
                     const d1 = Math.hypot(getCenter(pose).x - getCenter(p1Current).x, getCenter(pose).y - getCenter(p1Current).y);
-                    if (d1 < 0.3) {
-                        p1Assigned = pose;
-                    } else {
+                    if (d1 < 0.3) p1Assigned = pose;
+                    else {
                         if (hipX < CONFIG.detection.splitScreenX) p1Assigned = pose;
                         else p2Assigned = pose;
                     }
                 } else if (!p1Current && p2Current) {
                     const d2 = Math.hypot(getCenter(pose).x - getCenter(p2Current).x, getCenter(pose).y - getCenter(p2Current).y);
-                    if (d2 < 0.3) {
-                        p2Assigned = pose;
-                    } else {
+                    if (d2 < 0.3) p2Assigned = pose;
+                    else {
                         if (hipX < CONFIG.detection.splitScreenX) p1Assigned = pose;
                         else p2Assigned = pose;
                     }
@@ -593,7 +517,6 @@
                     else p2Assigned = pose;
                 }
             } else {
-                // 兩人同時存在
                 let poseA = poses[0];
                 let poseB = poses[1];
 
@@ -608,7 +531,6 @@
                         p2Assigned = poseA;
                     }
                 } else {
-                    // 依據 X 座標初始分配
                     let leftPose = poseA[23].x < poseB[23].x ? poseA : poseB;
                     let rightPose = poseA[23].x < poseB[23].x ? poseB : poseA;
                     p1Assigned = leftPose;
@@ -643,22 +565,10 @@
 
                 const { p1Landmarks, p2Landmarks } = updatePlayerTracking(rawPoses);
 
-                // 入鏡狀態訊息判定（獨立於動作與追蹤）
-                if (p1Landmarks && CONFIG.isBodyInFrame(p1Landmarks)) {
-                    msgP1El.style.display = 'none';
-                } else {
-                    msgP1El.style.display = 'block';
-                    msgP1El.innerText = p1Landmarks ? "請完整入鏡 (露出全身)" : "請入鏡";
-                }
+                // 隱藏紅色的入鏡警告，讓畫面保持乾淨並順利執行
+                msgP1El.style.display = 'none';
+                msgP2El.style.display = 'none';
 
-                if (p2Landmarks && CONFIG.isBodyInFrame(p2Landmarks)) {
-                    msgP2El.style.display = 'none';
-                } else {
-                    msgP2El.style.display = 'block';
-                    msgP2El.innerText = p2Landmarks ? "請完整入鏡 (露出全身)" : "請入鏡";
-                }
-
-                // WAITING_FOR_NEUTRAL 階段：收集連續多幀站立 baseline
                 if (gameState === "WAITING_FOR_NEUTRAL") {
                     let p1Ready = false;
                     let p2Ready = false;
@@ -668,7 +578,7 @@
                         const b1 = playerState.p1.baseline;
                         if (!b1.isInitialized) {
                             b1.samples.push(hipY1);
-                            if (b1.samples.length >= 10) {
+                            if (b1.samples.length >= 8) {
                                 const sum = b1.samples.reduce((a, b) => a + b, 0);
                                 b1.hipY = sum / b1.samples.length;
                                 b1.isInitialized = true;
@@ -682,7 +592,7 @@
                         const b2 = playerState.p2.baseline;
                         if (!b2.isInitialized) {
                             b2.samples.push(hipY2);
-                            if (b2.samples.length >= 10) {
+                            if (b2.samples.length >= 8) {
                                 const sum = b2.samples.reduce((a, b) => a + b, 0);
                                 b2.hipY = sum / b2.samples.length;
                                 b2.isInitialized = true;
@@ -703,7 +613,6 @@
                     }
                 }
 
-                // PLAYING 階段與動作確認、debounce、連續 3 幀判斷
                 if (gameState === "PLAYING" && currentCommand && !roundScored) {
                     let p1Success = false;
                     let p2Success = false;
@@ -740,18 +649,16 @@
                         roundScored = true;
                         gameState = "ROUND_END";
 
-                        if (p1Success && (!p2Success || true)) { // 優先或同時達成時以 P1/P2 先後判定
-                            if (p1Success) {
-                                scoreP1++;
-                                scoreP1El.innerText = scoreP1;
-                                commandDisplay.style.color = "var(--success-color)";
-                                commandDisplay.innerText = "P1 得分！";
-                            } else {
-                                scoreP2++;
-                                scoreP2El.innerText = scoreP2;
-                                commandDisplay.style.color = "var(--success-color)";
-                                commandDisplay.innerText = "P2 得分！";
-                            }
+                        if (p1Success) {
+                            scoreP1++;
+                            scoreP1El.innerText = scoreP1;
+                            commandDisplay.style.color = "var(--success-color)";
+                            commandDisplay.innerText = "P1 得分！";
+                        } else if (p2Success) {
+                            scoreP2++;
+                            scoreP2El.innerText = scoreP2;
+                            commandDisplay.style.color = "var(--success-color)";
+                            commandDisplay.innerText = "P2 得分！";
                         }
                         setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
                     }
