@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雙人 AR 反應速度遊戲</title>
+    <title>雙人 AR 反應速度遊戲 - Pose Prototype</title>
+    <!-- 引入 MediaPipe Tasks Vision 函式庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
         /* === 1. 基礎設定與重置 === */
         * {
@@ -51,7 +53,6 @@
             100% { transform: rotate(0deg); }
         }
 
-        /* 偵測直向時強制顯示遮罩 */
         @media screen and (orientation: portrait) {
             #rotate-warning {
                 display: flex;
@@ -86,10 +87,11 @@
             width: 100%;
             height: 100%;
             z-index: 2;
-            pointer-events: none; /* 確保點擊事件能穿透到 UI */
+            pointer-events: none;
+            transform: scaleX(-1); /* 配合影片鏡像，將骨架座標一同翻轉對齊 */
         }
 
-        /* Layer 3: 最上層 - 介面 HUD (Player Zones, Scores, Commands) */
+        /* Layer 3: 最上層 - 介面 HUD */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -99,10 +101,9 @@
             z-index: 3;
             display: flex;
             flex-direction: row;
-            pointer-events: none; /* 預設穿透，互動按鈕再額外開啟 */
+            pointer-events: none;
         }
 
-        /* 讓按鈕與互動元件可以點擊 */
         .interactive {
             pointer-events: auto;
         }
@@ -120,13 +121,8 @@
             border: 2px dashed rgba(0, 243, 255, 0.2);
         }
 
-        #zone-p1 {
-            border-right: none;
-        }
-
-        #zone-p2 {
-            border-left: none;
-        }
+        #zone-p1 { border-right: none; }
+        #zone-p2 { border-left: none; }
 
         .center-hud {
             width: 10%;
@@ -141,7 +137,7 @@
             border-right: 1px solid rgba(0, 243, 255, 0.2);
         }
 
-        /* === 5. UI 元件樣式 (科技風 HUD) === */
+        /* === 5. UI 元件樣式 === */
         .player-header {
             font-size: 1.2rem;
             font-weight: bold;
@@ -166,20 +162,17 @@
             font-size: 0.9rem;
             font-weight: bold;
             box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
-            display: none; /* 依狀態切換顯示 */
+            display: none;
         }
 
-        /* 中央指令看板 */
         #command-display {
-            font-size: 4rem;
+            font-size: 2.5rem;
             font-weight: 900;
             color: #00f3ff;
-            text-shadow: 0 0 20px #00f3ff, 0 0 40px #00f3ff;
-            letter-spacing: 4px;
+            text-shadow: 0 0 20px #00f3ff;
             text-align: center;
         }
 
-        /* 全螢幕覆蓋狀態層 (如：倒數、暫停、起始畫面、結算) */
         #overlay-screen {
             position: absolute;
             top: 0;
@@ -214,12 +207,6 @@
             border-radius: 30px;
             cursor: pointer;
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
-        }
-
-        .btn-primary:active {
-            transform: scale(0.95);
-            box-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
         }
     </style>
 </head>
@@ -234,55 +221,91 @@
 
     <!-- 2. 遊戲主畫面 -->
     <div id="game-container">
-        <!-- Layer 1: 攝影機串流背景 -->
+        <!-- Layer 1: 攝影機背景 -->
         <video id="webcam-video" autoplay playsinline muted></video>
 
-        <!-- Layer 2: 骨架與特效畫布 -->
+        <!-- Layer 2: 骨架畫布 -->
         <canvas id="game-canvas"></canvas>
 
         <!-- Layer 3: 介面 HUD -->
         <div id="ui-layer">
-            <!-- 玩家 1 區域 (左側 45%) -->
             <div class="player-zone" id="zone-p1">
                 <div class="player-header">PLAYER 1</div>
                 <div class="player-score" id="score-p1">0</div>
-                <!-- 狀態提示（例如：請往後站 / 雙腳入鏡） -->
                 <div class="player-status-msg" id="msg-p1">請讓雙腳入鏡</div>
             </div>
 
-            <!-- 中央比分與指令區 (10%) -->
             <div class="center-hud">
-                <div id="command-display">READY</div>
+                <div id="command-display">載入AI中</div>
             </div>
 
-            <!-- 玩家 2 區域 (右側 45%) -->
             <div class="player-zone" id="zone-p2">
                 <div class="player-header">PLAYER 2</div>
                 <div class="player-score" id="score-p2">0</div>
-                <!-- 狀態提示 -->
                 <div class="player-status-msg" id="msg-p2">請讓雙腳入鏡</div>
             </div>
         </div>
 
-        <!-- 遊戲開始 / 結束覆蓋選單 (初始預設顯示) -->
+        <!-- 遊戲開始覆蓋選單 -->
         <div id="overlay-screen" class="interactive">
             <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
-            <button class="btn-primary" id="start-btn">開始遊戲</button>
+            <button class="btn-primary" id="start-btn" disabled>正在載入 AI 模型...</button>
         </div>
     </div>
 
-<!-- 補上 JavaScript 邏輯來處理點擊與攝影機開啟 -->
+    <!-- AI 模型初始化與辨識邏輯 -->
     <script>
+        const { PoseLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+        let poseLandmarker = undefined;
+        let webcamRunning = false;
+        let lastVideoTime = -1;
+
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
         const webcamVideo = document.getElementById('webcam-video');
+        const canvasElement = document.getElementById('game-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const commandDisplay = document.getElementById('command-display');
 
-        startBtn.addEventListener('click', async () => {
+        const drawingUtils = new DrawingUtils(canvasCtx);
+
+        // 1. 初始化 MediaPipe Pose Landmarker 模型
+        async function createPoseLandmarker() {
             try {
-                // 1. 要求 iPhone 前鏡頭權限
+                const visionFilesetResolver = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+                );
+                poseLandmarker = await PoseLandmarker.createFromOptions(visionFilesetResolver, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 2 // 支援同時追蹤兩個人
+                });
+                
+                startBtn.disabled = false;
+                startBtn.innerText = "開始遊戲";
+                commandDisplay.innerText = "READY";
+                console.log("MediaPipe 模型載入完成！");
+            } catch (err) {
+                console.error("AI 模型載入失敗:", err);
+                commandDisplay.innerText = "載入失敗";
+                startBtn.innerText = "載入失敗，請重新整理";
+            }
+        }
+
+        createPoseLandmarker();
+
+        // 2. 點擊開始按鈕
+        startBtn.addEventListener('click', async () => {
+            if (!poseLandmarker) return;
+
+            try {
                 const constraints = {
                     video: {
-                        facingMode: 'user', // 指定前鏡頭
+                        facingMode: 'user',
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     },
@@ -290,28 +313,65 @@
                 };
 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                // 2. 將攝影機串流餵給 video 元素
                 webcamVideo.srcObject = stream;
-                await webcamVideo.play();
+                
+                webcamVideo.addEventListener('loadeddata', () => {
+                    webcamRunning = true;
+                    overlayScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        overlayScreen.style.display = 'none';
+                    }, 300);
 
-                // 3. 成功取得權限後，淡出並隱藏封面選單
-                overlayScreen.style.opacity = '0';
-                setTimeout(() => {
-                    overlayScreen.style.display = 'none';
-                }, 300);
-
-                console.log('攝影機啟動成功，進入遊戲準備階段');
-                // 之後這裡可以接續初始化 Pose Detection AI 模型與遊戲邏輯
+                    // 開始進行每秒影格辨識與繪製
+                    requestAnimationFrame(predictWebcam);
+                });
 
             } catch (err) {
                 console.error('無法存取攝影機:', err);
-                alert('無法啟用攝影機，請檢查 Safari 權限設定是否允許存取相機。');
+                alert('無法啟用攝影機，請檢查 Safari 權限設定。');
             }
         });
-    </script>
-</body>
-</html>
 
+        // 3. 即時循環辨識迴圈
+        async function predictWebcam() {
+            // 設定 Canvas 尺寸與 Video 一致
+            if (canvasElement.width !== webcamVideo.videoWidth || canvasElement.height !== webcamVideo.videoHeight) {
+                canvasElement.width = webcamVideo.videoWidth;
+                canvasElement.height = webcamVideo.videoHeight;
+            }
+
+            let startTimeMs = performance.now();
+            if (lastVideoTime !== webcamVideo.currentTime) {
+                lastVideoTime = webcamVideo.currentTime;
+                
+                // 執行 AI 辨識
+                const poseResult = poseLandmarker.detectForVideo(webcamVideo, startTimeMs);
+
+                // 清除上一幀的畫布
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                if (poseResult.landmarks) {
+                    // 迴圈繪製每一個被偵測到的人的骨架
+                    for (const landmarks of poseResult.landmarks) {
+                        // 繪製關節點與連線
+                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
+                            color: '#00F3FF',
+                            lineWidth: 3
+                        });
+                        drawingUtils.drawLandmarks(landmarks, {
+                            color: '#FF0055',
+                            radius: 4
+                        });
+                    }
+                }
+                canvasCtx.restore();
+            }
+
+            if (webcamRunning) {
+                requestAnimationFrame(predictWebcam);
+            }
+        }
+    </script>
 </body>
 </html>
