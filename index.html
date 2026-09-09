@@ -246,7 +246,6 @@
         </div>
     </div>
 
-    <!-- 改用標準 ESM 模組引入方式 -->
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
@@ -339,15 +338,15 @@
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-                if (poseResult.landmarks && drawingUtils) {
+                if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
                         drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
                             color: '#00F3FF',
-                            lineWidth: 3
+                            lineWidth: 4
                         });
                         drawingUtils.drawLandmarks(landmarks, {
                             color: '#FF0055',
-                            radius: 4
+                            radius: 5
                         });
                     }
                 }
