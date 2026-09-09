@@ -245,7 +245,7 @@
             <div class="player-zone" id="zone-p1">
                 <div class="player-header">PLAYER 1</div>
                 <div class="player-score" id="score-p1">0</div>
-                <div class="player-status-msg" id="msg-p1">請入鏡</div>
+                <div class="player-status-msg" id="msg-p1">請完整入鏡</div>
             </div>
 
             <div class="center-hud">
@@ -255,7 +255,7 @@
             <div class="player-zone" id="zone-p2">
                 <div class="player-header">PLAYER 2</div>
                 <div class="player-score" id="score-p2">0</div>
-                <div class="player-status-msg" id="msg-p2">請入鏡</div>
+                <div class="player-status-msg" id="msg-p2">請完整入鏡</div>
             </div>
         </div>
 
@@ -270,7 +270,7 @@
 
         // ==========================================
         // 集中設定檔 (Game Configuration)
-        // 集中管理參數，方便擴充動作、調整時間與畫面範圍
+        // 集中管理參數、可見度門檻與動作判定
         // ==========================================
         const CONFIG = {
             // 1. 時間間隔設定 (毫秒)
@@ -279,26 +279,126 @@
                 roundEndDelay: 2000   // 分出勝負後、進入下一局前的暫停時間
             },
             
-            // 2. 畫面範圍與靈敏度設定
+            // 2. 畫面範圍與信心分數門檻設定
             detection: {
-                splitScreenX: 0.5,     // 左右玩家分界線 (0.5 代表畫面正中央)
-                neutralCrouchMax: 0.60 // 中立站姿時，髖部的最高位置界線
+                splitScreenX: 0.5,         // 左右玩家分界線 (0.5 代表畫面正中央)
+                neutralCrouchMax: 0.60,    // 中立站姿時，髖部的最高位置界線
+                visibilityThreshold: 0.6,  // 動作判定的關節可見度信心門檻
+                squatKneeAngleMax: 145,    // 膝蓋彎曲角度門檻 (小於此角度代表膝蓋有彎曲)
+                squatHipKneeRatioMax: 0.42 // 髖膝距離相對於腿長的比例門檻
             },
             
-            // 3. 偵測動作的新增定義區 (未來新增動作只要在此新增項目即可)
+            // 3. 偵測動作的新增定義區 (加入相對比例、膝蓋夾角與動態下降檢查)
             commands: [
-                { text: "舉左手", check: (l) => l[15].y < l[11].y }, // 索引 15 手腕 y < 11 肩膀 y 代表舉高
-                { text: "舉右手", check: (l) => l[16].y < l[12].y }, // 索引 16 手腕 y < 12 肩膀 y 代表舉高
-                { text: "蹲下",   check: (l) => (l[23].y + l[24].y)/2 > 0.65 } // 左右髖部平均 y 超過 0.65 代表蹲下
+                { 
+                    text: "舉左手", 
+                    check: (l) => {
+                        const t = CONFIG.detection.visibilityThreshold;
+                        if ((l[15].visibility ?? 0) < t || (l[11].visibility ?? 0) < t) return false;
+                        return l[15].y < l[11].y; 
+                    } 
+                },
+                { 
+                    text: "舉右手", 
+                    check: (l) => {
+                        const t = CONFIG.detection.visibilityThreshold;
+                        if ((l[16].visibility ?? 0) < t || (l[12].visibility ?? 0) < t) return false;
+                        return l[16].y < l[12].y; 
+                    } 
+                },
+                { 
+                    text: "蹲下",   
+                    check: (l, playerKey = 'p1') => {
+                        const t = CONFIG.detection.visibilityThreshold;
+
+                        // 嚴格檢查重要關節 visibility (使用 ?? 0 避免缺漏視為 1)
+                        if (
+                            (l[23].visibility ?? 0) < t || (l[24].visibility ?? 0) < t || // 髖部
+                            (l[25].visibility ?? 0) < t || (l[26].visibility ?? 0) < t || // 膝蓋
+                            (l[27].visibility ?? 0) < t || (l[28].visibility ?? 0) < t    // 腳踝
+                        ) {
+                            return false;
+                        }
+
+                        const avgHipY = (l[23].y + l[24].y) / 2;
+                        const avgKneeY = (l[25].y + l[26].y) / 2;
+                        const avgAnkleY = (l[27].y + l[28].y) / 2;
+
+                        // 計算相對幾何比例與高度
+                        const legLength = avgAnkleY - avgHipY;
+                        const hipKneeSpan = avgKneeY - avgHipY;
+
+                        if (legLength <= 0) return false;
+
+                        // 1. 髖膝比例判定 (髖部是否接近膝蓋)
+                        const hipKneeRatio = hipKneeSpan / legLength;
+                        const isHipNearKnee = hipKneeRatio < CONFIG.detection.squatHipKneeRatioMax;
+
+                        // 2. 計算膝蓋彎曲角度 (Hip -> Knee -> Ankle)
+                        const getAngle = (a, b, c) => {
+                            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+                            let angle = Math.abs(radians * 180.0 / Math.PI);
+                            if (angle > 180.0) angle = 360.0 - angle;
+                            return angle;
+                        };
+
+                        const leftKneeAngle = getAngle(l[23], l[25], l[27]);
+                        const rightKneeAngle = getAngle(l[24], l[26], l[28]);
+                        const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
+                        const isKneeBent = avgKneeAngle < CONFIG.detection.squatKneeAngleMax;
+
+                        // 3. 動態下降檢查 (確認髖部確實正在向下移動或維持在低點)
+                        let isMovingDown = true;
+                        if (playerKey) {
+                            const history = squatHistory[playerKey];
+                            if (history.length > 0) {
+                                const prevAvgY = history[history.length - 1];
+                                // 當前 Y 大於或等於前幾幀平均，代表正在下降或處於低位
+                                isMovingDown = avgHipY >= (prevAvgY - 0.01);
+                            }
+                            history.push(avgHipY);
+                            if (history.length > 6) history.shift();
+                        }
+
+                        return isHipNearKnee && isKneeBent && isMovingDown;
+                    } 
+                }
             ],
             
-            // 4. 中立姿勢檢查邏輯 (確保玩家在準備時有乖乖放手、站好)
+            // 4. 中立姿勢與全身入鏡檢查邏輯
             neutralCheck: function(l) {
-                const leftHandDown = l[15].y > l[11].y; // 左手腕低於左肩膀
-                const rightHandDown = l[16].y > l[12].y; // 右手腕低於右肩膀
-                const notCrouching = (l[23].y + l[24].y) / 2 < this.detection.neutralCrouchMax; // 沒有蹲下
+                const t = 0.55; 
+                const isFullyVisible = 
+                    (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t && 
+                    (l[15].visibility ?? 0) > t && (l[16].visibility ?? 0) > t && 
+                    (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t && 
+                    (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t && 
+                    (l[27].visibility ?? 0) > t && (l[28].visibility ?? 0) > t;   
+
+                if (!isFullyVisible) return false;
+
+                const leftHandDown = l[15].y > l[11].y; 
+                const rightHandDown = l[16].y > l[12].y; 
+                const notCrouching = (l[23].y + l[24].y) / 2 < this.detection.neutralCrouchMax; 
+                
                 return leftHandDown && rightHandDown && notCrouching;
+            },
+
+            // 5. 快速完整入鏡檢查
+            isBodyInFrame: function(l) {
+                if (!l) return false;
+                const t = 0.4; 
+                return (l[11].visibility ?? 0) > t && (l[12].visibility ?? 0) > t &&
+                       (l[23].visibility ?? 0) > t && (l[24].visibility ?? 0) > t &&
+                       (l[25].visibility ?? 0) > t && (l[26].visibility ?? 0) > t &&
+                       (l[27].visibility ?? 0) > t && (l[28].visibility ?? 0) > t;
             }
+        };
+
+        // P1 / P2 獨立歷史紀錄緩衝區 (用於動態下降輔助判定)
+        const squatHistory = {
+            p1: [],
+            p2: []
         };
 
         let poseLandmarker = undefined;
@@ -307,8 +407,8 @@
 
         let scoreP1 = 0;
         let scoreP2 = 0;
-        let gameState = "IDLE"; // 遊戲狀態: IDLE (閒置), WAITING_FOR_NEUTRAL (等待歸位), COUNTDOWN (準備), PLAYING (進行中), ROUND_END (回合結束)
-        let currentCommand = null; // 當前出題內容
+        let gameState = "IDLE"; 
+        let currentCommand = null; 
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -320,8 +420,9 @@
         const commandDisplay = document.getElementById('command-display');
         const scoreP1El = document.getElementById('score-p1');
         const scoreP2El = document.getElementById('score-p2');
+        const msgP1El = document.getElementById('msg-p1');
+        const msgP2El = document.getElementById('msg-p2');
 
-        // 預先載入 MediaPipe AI 模型
         async function preloadModel() {
             try {
                 startBtn.innerText = "正在載入 WASM...";
@@ -346,7 +447,6 @@
 
         preloadModel();
 
-        // 點擊開始遊戲按鈕：啟動相機串流
         startBtn.addEventListener('click', async () => {
             if (!poseLandmarker) return;
             try {
@@ -360,39 +460,40 @@
                     overlayScreen.style.opacity = '0';
                     setTimeout(() => overlayScreen.style.display = 'none', 300);
                     requestAnimationFrame(predictWebcam);
-                    startNeutralCheckPhase(); // 啟動後先進入「等待玩家歸位」階段
+                    startNeutralCheckPhase(); 
                 });
             } catch (err) {
                 alert('無法啟用攝影機');
             }
         });
 
-        // 進入「等待中立歸位」階段
         function startNeutralCheckPhase() {
             gameState = "WAITING_FOR_NEUTRAL";
             currentCommand = null;
+            // 清空歷史紀錄以防殘留狀態影響下一局
+            squatHistory.p1 = [];
+            squatHistory.p2 = [];
             commandDisplay.style.color = "var(--primary-color)";
             commandDisplay.innerText = "請雙手放下\n維持站好";
         }
 
-        // 進入「準備倒數」階段
         function startCountdownPhase() {
             gameState = "COUNTDOWN";
+            squatHistory.p1 = [];
+            squatHistory.p2 = [];
             commandDisplay.style.color = "var(--warning-color)";
             commandDisplay.innerText = "準備...";
             
             setTimeout(() => {
                 if (!webcamRunning) return;
-                // 從設定檔的指令清單中隨機抽取一個動作
                 const randomCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
                 currentCommand = randomCmd;
-                gameState = "PLAYING"; // 正式進入遊戲判定
+                gameState = "PLAYING"; 
                 commandDisplay.style.color = "var(--danger-color)";
                 commandDisplay.innerText = randomCmd.text;
             }, CONFIG.timing.countdownDelay);
         }
 
-        // 核心相機預測與遊戲迴圈
         async function predictWebcam() {
             if (canvasElement.width !== webcamVideo.videoWidth || canvasElement.height !== webcamVideo.videoHeight) {
                 canvasElement.width = webcamVideo.videoWidth;
@@ -412,7 +513,6 @@
 
                 if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
-                        // 依據設定檔中的分界線 (splitScreenX) 劃分左右玩家
                         const hipX = (landmarks[23].x + landmarks[24].x) / 2;
                         if (hipX > CONFIG.detection.splitScreenX) {
                             p1Landmarks = landmarks; 
@@ -420,36 +520,48 @@
                             p2Landmarks = landmarks; 
                         }
 
-                        // 繪製骨架線條與關節點
                         drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
                         drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
                     }
                 }
 
-                // 1. 狀態 A：等待中立歸位階段（檢查玩家是否雙手放下、站好）
+                if (p1Landmarks && CONFIG.isBodyInFrame(p1Landmarks)) {
+                    msgP1El.style.display = 'none';
+                } else {
+                    msgP1El.style.display = 'block';
+                    msgP1El.innerText = p1Landmarks ? "請完整入鏡 (露出全身)" : "請入鏡";
+                }
+
+                if (p2Landmarks && CONFIG.isBodyInFrame(p2Landmarks)) {
+                    msgP2El.style.display = 'none';
+                } else {
+                    msgP2El.style.display = 'block';
+                    msgP2El.innerText = p2Landmarks ? "請完整入鏡 (露出全身)" : "請入鏡";
+                }
+
                 if (gameState === "WAITING_FOR_NEUTRAL") {
                     let p1Ready = p1Landmarks ? CONFIG.neutralCheck(p1Landmarks) : false;
                     let p2Ready = p2Landmarks ? CONFIG.neutralCheck(p2Landmarks) : false;
 
                     let everyoneReady = false;
                     if (p1Landmarks && p2Landmarks) {
-                        everyoneReady = p1Ready && p2Ready; // 兩人皆入鏡需雙方都準備好
+                        everyoneReady = p1Ready && p2Ready; 
                     } else if (p1Landmarks || p2Landmarks) {
-                        everyoneReady = p1Ready || p2Ready; // 單人入鏡則該玩家準備好即可
+                        everyoneReady = p1Ready || p2Ready; 
                     }
 
                     if (everyoneReady) {
-                        startCountdownPhase(); // 達標後進入倒數
+                        startCountdownPhase(); 
                     }
                 }
 
-                // 2. 狀態 B：遊戲進行中 (PLAYING) 判定邏輯
                 if (gameState === "PLAYING" && currentCommand) {
-                    let p1Success = p1Landmarks ? currentCommand.check(p1Landmarks) : false;
-                    let p2Success = p2Landmarks ? currentCommand.check(p2Landmarks) : false;
+                    // 根據指令文字判斷是否需要傳入玩家代號以讀取獨立歷史紀錄
+                    let p1Success = p1Landmarks ? (currentCommand.text === "蹲下" ? currentCommand.check(p1Landmarks, 'p1') : currentCommand.check(p1Landmarks)) : false;
+                    let p2Success = p2Landmarks ? (currentCommand.text === "蹲下" ? currentCommand.check(p2Landmarks, 'p2') : currentCommand.check(p2Landmarks)) : false;
 
                     if (p1Success || p2Success) {
-                        gameState = "ROUND_END"; // 鎖定狀態避免重複判定
+                        gameState = "ROUND_END"; 
                         if (p1Success) {
                             scoreP1++;
                             scoreP1El.innerText = scoreP1;
@@ -461,7 +573,6 @@
                             commandDisplay.style.color = "var(--success-color)";
                             commandDisplay.innerText = "P2 得分！";
                         }
-                        // 經過設定檔中的停留時間後，重新回到歸位檢查
                         setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
                     }
                 }
