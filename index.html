@@ -278,7 +278,7 @@
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
-        const DEBUG = true;
+        const DEBUG = false; // 已關閉偵錯視窗
 
         const CONFIG = {
             timing: {
@@ -651,7 +651,6 @@
                     playerState.p2.identityMaintained = true;
                     playerState.p2.lastCenterX = item.centerX;
                 } else {
-                    // Fallback initialization
                     if (item.centerX < 0.5) {
                         p1Landmarks = item.pose;
                         playerState.p1.trackingDistance = 0;
@@ -665,7 +664,6 @@
                     }
                 }
             } else {
-                // Two or more poses: match using distance or fallback to sorting
                 validPoses.sort((a, b) => a.centerX - b.centerX);
                 const pA = validPoses[0];
                 const pB = validPoses[1];
@@ -731,7 +729,6 @@
                 const p1InFrame = p1Landmarks && CONFIG.isBodyInFrame(p1Landmarks);
                 const p2InFrame = p2Landmarks && CONFIG.isBodyInFrame(p2Landmarks);
 
-                // Capture command start wrist positions if transitioning to playing
                 if (gameState === "PLAYING" && playerState.p1.commandStartLeftWristY === 0 && p1Landmarks) {
                     playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
                     playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
@@ -771,40 +768,6 @@
                     msgP2El.style.display = 'none';
                 }
 
-                if (DEBUG) {
-                    const stats1 = CONFIG.getSkeletonStats(p1Landmarks);
-                    const stats2 = CONFIG.getSkeletonStats(p2Landmarks);
-                    
-                    debugP1El.innerHTML = `<b>P1 DEBUG</b><br>` +
-                        `detected: ${p1Landmarks ? 'YES' : 'NO'}<br>` +
-                        `bodyInFrame: ${p1InFrame ? 'YES' : 'NO'}<br>` +
-                        `centerX: ${p1Landmarks ? ((p1Landmarks[23].x + p1Landmarks[24].x)/2).toFixed(3) : 'N/A'}<br>` +
-                        `lastCenterX: ${playerState.p1.lastCenterX.toFixed(3)}<br>` +
-                        `trackingDist: ${playerState.p1.trackingDistance.toFixed(3)}<br>` +
-                        `identityOK: ${playerState.p1.identityMaintained ? 'YES' : 'NO'}<br>` +
-                        `shoulder: ${stats1.shoulder ? 'OK' : 'NO'} | hip: ${stats1.hip ? 'OK' : 'NO'}<br>` +
-                        `knee: ${stats1.knee ? 'OK' : 'NO'} | ankle: ${stats1.ankle ? 'OK' : 'NO'}<br>` +
-                        `baseline: ${playerState.p1.baseline.isInitialized ? playerState.p1.baseline.hipY.toFixed(2) : 'WAIT'}<br>` +
-                        `cmd: ${currentCommand ? currentCommand.text : 'NONE'}<br>` +
-                        `actionConfirm: ${playerState.p1.actionConfirm}<br>` +
-                        `reactionTime: ${playerState.p1.reactionTime ? playerState.p1.reactionTime.toFixed(0) + 'ms' : 'N/A'}`;
-
-                    debugP2El.innerHTML = `<b>P2 DEBUG</b><br>` +
-                        `detected: ${p2Landmarks ? 'YES' : 'NO'}<br>` +
-                        `bodyInFrame: ${p2InFrame ? 'YES' : 'NO'}<br>` +
-                        `centerX: ${p2Landmarks ? ((p2Landmarks[23].x + p2Landmarks[24].x)/2).toFixed(3) : 'N/A'}<br>` +
-                        `lastCenterX: ${playerState.p2.lastCenterX.toFixed(3)}<br>` +
-                        `trackingDist: ${playerState.p2.trackingDistance.toFixed(3)}<br>` +
-                        `identityOK: ${playerState.p2.identityMaintained ? 'YES' : 'NO'}<br>` +
-                        `shoulder: ${stats2.shoulder ? 'OK' : 'NO'} | hip: ${stats2.hip ? 'OK' : 'NO'}<br>` +
-                        `knee: ${stats2.knee ? 'OK' : 'NO'} | ankle: ${stats2.ankle ? 'OK' : 'NO'}<br>` +
-                        `baseline: ${playerState.p2.baseline.isInitialized ? playerState.p2.baseline.hipY.toFixed(2) : 'WAIT'}<br>` +
-                        `cmd: ${currentCommand ? currentCommand.text : 'NONE'}<br>` +
-                        `actionConfirm: ${playerState.p2.actionConfirm}<br>` +
-                        `reactionTime: ${playerState.p2.reactionTime ? playerState.p2.reactionTime.toFixed(0) + 'ms' : 'N/A'}<br>` +
-                        `gameState: ${gameState} | rId: ${roundId}`;
-                }
-
                 if (gameState === "WAITING_FOR_NEUTRAL") {
                     let p1Ready = false;
                     let p2Ready = false;
@@ -821,7 +784,6 @@
                                 b1.isInitialized = true;
                             }
                         } else {
-                            // Slow EMA update during neutral
                             b1.hipY = b1.hipY * 0.99 + hipY1 * 0.01;
                         }
                         p1Ready = b1.isInitialized;
