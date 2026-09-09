@@ -288,10 +288,9 @@
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
                 );
 
-                // 採用方法 B：使用 GitHub Pages 的絕對網址來讀取同層的 .task 檔案
                 poseLandmarker = await PoseLandmarker.createFromOptions(visionFilesetResolver, {
                     baseOptions: {
-                        modelAssetPath: "https://kanyili.github.io/AR-jump-or-squat/pose_landmarker_lite.task",
+                        modelAssetPath: "./pose_landmarker_lite.task",
                         delegate: "GPU"
                     },
                     runningMode: "VIDEO",
