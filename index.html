@@ -1,11 +1,3 @@
-* **P1/P2 身分追蹤優化**：在 `updatePlayerTracking` 中導入基於上一幀 `lastCenterX` 的最小距離配對與最大追蹤距離限制（0.30），防止兩人在中央交錯或短暫遮擋時身分互換，並在 Debug 呈現 `trackingDistance`。
-* **防作弊舉手判定**：進入 `PLAYING` 時記錄 `commandStartLeftWristY` 與 `commandStartRightWristY`，舉手除了解高於肩膀外，還必須比指令出現時向上位移一定比例，若在 `COUNTDOWN` 提前舉手必須先放回。
-* **容錯優化的蹲下判定**：放寬膝蓋與腳踝雙側同時存在的限制，允許單側可靠的髖-膝-腳踝進行夾角與 `hipDropRatio` 計算，並加入防抖動過濾與 `squatHistory` 連續幀確認。
-* **反應時間 (Reaction Time) 機制**：在指令顯示瞬間記錄 `commandStartTime`，成功時計算毫秒差；雙人皆成功時比較反應時間（差小於 50ms 判為平手），並將秒數顯示於畫面與 Debug 中。
-* **防止非同步狀態污染**：加入 `roundId` 配合 `setTimeout` 確保舊回合的計時器不會在跨回合或重設狀態時誤發。
-* **更穩健的 Baseline 與 Debug 擴充**：維持平穩的 baseline 不隨意因抖動更新，並擴增 Debug 面板以完整顯示追蹤距離、身分維持、反應時間與目前 `roundId`。
-
-```html
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -956,5 +948,3 @@
     </script>
 </body>
 </html>
-
-```
