@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雙人 AR 反應速度遊戲 - Pose Prototype</title>
+    <title>雙人 AR 反應速度遊戲</title>
     <style>
         * {
             box-sizing: border-box;
@@ -156,11 +156,12 @@
         }
 
         #command-display {
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: 900;
             color: #00f3ff;
             text-shadow: 0 0 20px #00f3ff;
             text-align: center;
+            line-height: 1.4;
         }
 
         #overlay-screen {
@@ -198,8 +199,6 @@
             border-radius: 30px;
             cursor: pointer;
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
-            max-width: 90vw;
-            word-break: break-all;
         }
         
         .btn-primary:disabled {
@@ -226,17 +225,17 @@
             <div class="player-zone" id="zone-p1">
                 <div class="player-header">PLAYER 1</div>
                 <div class="player-score" id="score-p1">0</div>
-                <div class="player-status-msg" id="msg-p1">請讓雙腳入鏡</div>
+                <div class="player-status-msg" id="msg-p1">請入鏡</div>
             </div>
 
             <div class="center-hud">
-                <div id="command-display">READY</div>
+                <div id="command-display">準備</div>
             </div>
 
             <div class="player-zone" id="zone-p2">
                 <div class="player-header">PLAYER 2</div>
                 <div class="player-score" id="score-p2">0</div>
-                <div class="player-status-msg" id="msg-p2">請讓雙腳入鏡</div>
+                <div class="player-status-msg" id="msg-p2">請入鏡</div>
             </div>
         </div>
 
@@ -253,6 +252,18 @@
         let webcamRunning = false;
         let lastVideoTime = -1;
 
+        let scoreP1 = 0;
+        let scoreP2 = 0;
+        let gameState = "IDLE"; // IDLE, COUNTDOWN, PLAYING, ROUND_END
+        let currentCommand = null;
+        let roundTimer = null;
+
+        const commands = [
+            { text: "舉左手", check: (l) => l[15].y < l[11].y }, // 左手腕高於左肩膀
+            { text: "舉右手", check: (l) => l[16].y < l[12].y }, // 右手腕高於右肩膀
+            { text: "蹲下", check: (l) => (l[23].y + l[24].y)/2 > 0.65 } // 髖部位置下降
+        ];
+
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
         const webcamVideo = document.getElementById('webcam-video');
@@ -260,16 +271,17 @@
         const canvasCtx = canvasElement.getContext('2d');
         const drawingUtils = new DrawingUtils(canvasCtx);
 
+        const commandDisplay = document.getElementById('command-display');
+        const scoreP1El = document.getElementById('score-p1');
+        const scoreP2El = document.getElementById('score-p2');
+
         async function preloadModel() {
             try {
-                startBtn.innerText = "正在載入 WASM 執行檔...";
-
+                startBtn.innerText = "正在載入 WASM...";
                 const visionFilesetResolver = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
                 );
-
                 startBtn.innerText = "正在載入 AI 模型...";
-
                 poseLandmarker = await PoseLandmarker.createFromOptions(visionFilesetResolver, {
                     baseOptions: {
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
@@ -278,14 +290,10 @@
                     runningMode: "VIDEO",
                     numPoses: 2
                 });
-
                 startBtn.disabled = false;
                 startBtn.innerText = "開始遊戲";
-                console.log("AI 模型載入完成！");
-
             } catch (err) {
-                console.error("AI 模型載入失敗:", err);
-                startBtn.innerText = "錯誤: " + (err.message || err);
+                startBtn.innerText = "錯誤: " + err.message;
             }
         }
 
@@ -293,35 +301,39 @@
 
         startBtn.addEventListener('click', async () => {
             if (!poseLandmarker) return;
-
             try {
-                const constraints = {
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                });
                 webcamVideo.srcObject = stream;
-                
                 webcamVideo.addEventListener('loadeddata', () => {
                     webcamRunning = true;
                     overlayScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        overlayScreen.style.display = 'none';
-                    }, 300);
-
+                    setTimeout(() => overlayScreen.style.display = 'none', 300);
                     requestAnimationFrame(predictWebcam);
+                    startNewRound();
                 });
-
             } catch (err) {
-                console.error('無法存取攝影機:', err);
-                alert('無法啟用攝影機，請檢查相機權限設定。');
+                alert('無法啟用攝影機');
             }
         });
+
+        function startNewRound() {
+            if (gameState === "PLAYING") return;
+            gameState = "COUNTDOWN";
+            commandDisplay.style.color = "#00f3ff";
+            commandDisplay.innerText = "準備...";
+            
+            setTimeout(() => {
+                if (!webcamRunning) return;
+                const randomCmd = commands[Math.floor(Math.random() * commands.length)];
+                currentCommand = randomCmd;
+                gameState = "PLAYING";
+                commandDisplay.style.color = "#ff0055";
+                commandDisplay.innerText = randomCmd.text;
+            }, 1500);
+        }
 
         async function predictWebcam() {
             if (canvasElement.width !== webcamVideo.videoWidth || canvasElement.height !== webcamVideo.videoHeight) {
@@ -332,24 +344,51 @@
             let startTimeMs = performance.now();
             if (lastVideoTime !== webcamVideo.currentTime) {
                 lastVideoTime = webcamVideo.currentTime;
-                
                 const poseResult = poseLandmarker.detectForVideo(webcamVideo, startTimeMs);
 
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
+                let p1Landmarks = null;
+                let p2Landmarks = null;
+
                 if (poseResult.landmarks && poseResult.landmarks.length > 0) {
                     for (const landmarks of poseResult.landmarks) {
-                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
-                            color: '#00F3FF',
-                            lineWidth: 4
-                        });
-                        drawingUtils.drawLandmarks(landmarks, {
-                            color: '#FF0055',
-                            radius: 5
-                        });
+                        // 以畫面中線 (x = 0.5) 區分左右玩家
+                        const hipX = (landmarks[23].x + landmarks[24].x) / 2;
+                        if (hipX > 0.5) {
+                            p1Landmarks = landmarks; // 鏡射後左側
+                        } else {
+                            p2Landmarks = landmarks; // 鏡射後右側
+                        }
+
+                        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
+                        drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
                     }
                 }
+
+                // 遊戲判定邏輯
+                if (gameState === "PLAYING" && currentCommand) {
+                    let p1Success = p1Landmarks ? currentCommand.check(p1Landmarks) : false;
+                    let p2Success = p2Landmarks ? currentCommand.check(p2Landmarks) : false;
+
+                    if (p1Success || p2Success) {
+                        gameState = "ROUND_END";
+                        if (p1Success) {
+                            scoreP1++;
+                            scoreP1El.innerText = scoreP1;
+                            commandDisplay.style.color = "#00ffcc";
+                            commandDisplay.innerText = "P1 得分！";
+                        } else if (p2Success) {
+                            scoreP2++;
+                            scoreP2El.innerText = scoreP2;
+                            commandDisplay.style.color = "#00ffcc";
+                            commandDisplay.innerText = "P2 得分！";
+                        }
+                        setTimeout(startNewRound, 2000);
+                    }
+                }
+
                 canvasCtx.restore();
             }
 
