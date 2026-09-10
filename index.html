@@ -86,44 +86,6 @@
             100% { transform: translate(0, 0) rotate(0deg); }
         }
 
-        /* 全螢幕紅綠交替邊框脈衝特效 */
-        #game-container::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 8;
-            border: 0px solid transparent;
-            box-shadow: inset 0 0 0 rgba(0,0,0,0);
-            transition: none;
-        }
-
-        #game-container.pulse-effect::after {
-            animation: redGreenPulse 1.0s ease-in-out forwards;
-        }
-
-        @keyframes redGreenPulse {
-            0% {
-                border: 4px solid var(--success-color);
-                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
-            }
-            33% {
-                border: 4px solid var(--danger-color);
-                box-shadow: inset 0 0 50px var(--danger-color), 0 0 40px var(--danger-color);
-            }
-            66% {
-                border: 4px solid var(--success-color);
-                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
-            }
-            100% {
-                border: 4px solid transparent;
-                box-shadow: inset 0 0 0 rgba(0,0,0,0), 0 0 0 rgba(0,0,0,0);
-            }
-        }
-
         #webcam-video {
             position: absolute;
             top: 0;
@@ -177,38 +139,41 @@
             transition: all 0.2s ease;
         }
 
-        .win-effect {
-            animation: flashCustom 1.0s ease-in-out forwards;
+        /* 玩家區域紅綠交替脈衝特效 */
+        .player-zone::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 8;
+            border: 0px solid transparent;
+            box-shadow: inset 0 0 0 rgba(0,0,0,0);
+            transition: none;
         }
 
-        @keyframes flashCustom {
-            0% { 
-                border-color: var(--border-glow); 
-                box-shadow: none; 
+        .player-zone.pulse-effect::after {
+            animation: redGreenPulse 1.0s ease-in-out forwards;
+        }
+
+        @keyframes redGreenPulse {
+            0% {
+                border: 4px solid var(--success-color);
+                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
             }
-            16.67% { 
-                border-color: var(--success-color); 
-                box-shadow: 0 0 25px var(--success-color); 
+            33% {
+                border: 4px solid var(--danger-color);
+                box-shadow: inset 0 0 50px var(--danger-color), 0 0 40px var(--danger-color);
             }
-            33.33% { 
-                border-color: var(--border-glow); 
-                box-shadow: none; 
+            66% {
+                border: 4px solid var(--success-color);
+                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
             }
-            50% { 
-                border-color: var(--success-color); 
-                box-shadow: 0 0 25px var(--success-color); 
-            }
-            66.67% { 
-                border-color: var(--border-glow); 
-                box-shadow: none; 
-            }
-            83.33% { 
-                border-color: var(--success-color); 
-                box-shadow: 0 0 25px var(--success-color); 
-            }
-            100% { 
-                border-color: var(--border-glow); 
-                box-shadow: none; 
+            100% {
+                border: 4px solid transparent;
+                box-shadow: inset 0 0 0 rgba(0,0,0,0), 0 0 0 rgba(0,0,0,0);
             }
         }
 
@@ -654,24 +619,27 @@
         }
 
         function triggerWinEffect(winner) {
-            // 1. 觸發區域框閃爍特效
+            // 1. 僅觸發得分玩家的紅綠交替脈衝特效 (移除 win-effect)
             if (winner === "P1") {
-                zoneP1.classList.add('win-effect');
-                setTimeout(() => zoneP1.classList.remove('win-effect'), 1000);
+                zoneP1.classList.add('pulse-effect');
+                setTimeout(() => zoneP1.classList.remove('pulse-effect'), 1000);
             } else if (winner === "P2") {
-                zoneP2.classList.add('win-effect');
-                setTimeout(() => zoneP2.classList.remove('win-effect'), 1000);
+                zoneP2.classList.add('pulse-effect');
+                setTimeout(() => zoneP2.classList.remove('pulse-effect'), 1000);
+            } else if (winner === "DRAW") {
+                zoneP1.classList.add('pulse-effect');
+                zoneP2.classList.add('pulse-effect');
+                setTimeout(() => {
+                    zoneP1.classList.remove('pulse-effect');
+                    zoneP2.classList.remove('pulse-effect');
+                }, 1000);
             }
 
-            // 2. 觸發全螢幕紅綠交替邊框脈衝
-            gameContainer.classList.add('pulse-effect');
-            setTimeout(() => gameContainer.classList.remove('pulse-effect'), 1000);
-
-            // 3. 觸發畫面高對比動態震動
+            // 2. 觸發畫面高對比動態震動
             gameContainer.classList.add('screen-shake');
             setTimeout(() => gameContainer.classList.remove('screen-shake'), 300);
 
-            // 4. 觸發字體彈跳與放大動畫
+            // 3. 觸發字體彈跳與放大動畫
             commandDisplay.classList.remove('pop-bounce-anim');
             void commandDisplay.offsetWidth; // 重置動畫
             commandDisplay.classList.add('pop-bounce-anim');
