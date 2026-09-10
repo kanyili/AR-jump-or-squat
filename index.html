@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雙人 AR 反應速度遊戲</title>
+    <title>11:48_雙人AR反應速度遊戲</title>
     <style>
         :root {
             --bg-color: #0b0f19;          
@@ -111,8 +111,9 @@
             pointer-events: auto;
         }
 
+        /* 擴展兩側玩家區域寬度 */
         .player-zone {
-            width: 42%;
+            width: 44%;
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -121,13 +122,35 @@
             padding: 20px;
             position: relative;
             border: 2px dashed var(--border-glow);
+            transition: all 0.2s ease;
         }
 
         #zone-p1 { border-right: none; }
         #zone-p2 { border-left: none; }
 
+        /* 煙火/慶祝爆發特效 (1秒) */
+        .win-effect {
+            animation: fireworksBurst 1s ease-out forwards;
+        }
+
+        @keyframes fireworksBurst {
+            0% { 
+                box-shadow: inset 0 0 0px rgba(0, 255, 204, 0); 
+                background-color: transparent; 
+            }
+            15% { 
+                box-shadow: inset 0 0 120px rgba(0, 255, 204, 0.9); 
+                background-color: rgba(0, 255, 204, 0.3); 
+            }
+            100% { 
+                box-shadow: inset 0 0 0px rgba(0, 255, 204, 0); 
+                background-color: transparent; 
+            }
+        }
+
+        /* 縮小中央 HUD 寬度 */
         .center-hud {
-            width: 16%;
+            width: 12%;
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -168,22 +191,6 @@
             margin-bottom: 10px;
         }
 
-        .debug-panel {
-            background: rgba(0, 0, 0, 0.75);
-            border: 1px solid var(--primary-color);
-            padding: 8px;
-            border-radius: 8px;
-            font-size: 0.65rem;
-            color: #00ffcc;
-            width: 100%;
-            max-width: 240px;
-            display: none;
-            line-height: 1.3;
-            text-align: left;
-            overflow-y: auto;
-            max-height: 60vh;
-        }
-
         #command-display {
             font-size: 1.8rem;
             font-weight: 900;
@@ -191,24 +198,7 @@
             text-shadow: 0 0 20px var(--primary-color);
             text-align: center;
             line-height: 1.4;
-        }
-
-        #version-stamp {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 20;
-            font-size: 0.8rem;
-            color: rgba(255, 255, 255, 0.8);
-            background: rgba(11, 15, 25, 0.6);
-            padding: 4px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            backdrop-filter: blur(4px);
-            letter-spacing: 0.5px;
-            white-space: nowrap;
-            pointer-events: none;
+            word-break: break-word;
         }
 
         #overlay-screen {
@@ -258,8 +248,6 @@
 </head>
 <body>
 
-    <div id="version-stamp">2026-06-06 16:19:00 (Fixed)</div>
-
     <div id="rotate-warning">
         <div class="icon">📱</div>
         <h2>請將手機轉為橫向</h2>
@@ -274,19 +262,17 @@
             <div class="player-zone" id="zone-p1">
                 <div class="player-header">PLAYER 1</div>
                 <div class="player-score" id="score-p1">0</div>
-                <div class="player-status-msg" id="msg-p1">請完整入鏡</div>
-                <div class="debug-panel" id="debug-p1"></div>
+                <div class="player-status-msg" id="msg-p1">請上半身入鏡</div>
             </div>
 
             <div class="center-hud">
-                <div id="command-display">等待雙人入鏡</div>
+                <div id="command-display">兩位玩家入鏡</div>
             </div>
 
             <div class="player-zone" id="zone-p2">
                 <div class="player-header">PLAYER 2</div>
                 <div class="player-score" id="score-p2">0</div>
-                <div class="player-status-msg" id="msg-p2">請完整入鏡</div>
-                <div class="debug-panel" id="debug-p2"></div>
+                <div class="player-status-msg" id="msg-p2">請上半身入鏡</div>
             </div>
         </div>
 
@@ -299,19 +285,13 @@
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
 
-        const DEBUG = false;
-
         const CONFIG = {
             timing: {
                 countdownDelay: 1500, 
                 roundEndDelay: 2000   
             },
             detection: {
-                visibilityThreshold: 0.3,   
-                neutralCrouchMax: 0.70,      
-                squatKneeAngleMax: 165,      
-                squatMinHipDropRatio: 0.02,  
-                squatHistoryFrames: 5,       
+                visibilityThreshold: 0.3,      
                 actionConfirmFrames: 2,      
                 handDownTolerance: 0.05,     
                 handRaiseMinDelta: 0.04,
@@ -337,103 +317,70 @@
                 const valid = (idx) => CONFIG.isLandmarkPositionValid(l, idx);
                 const hasShoulders = valid(11) && valid(12);
                 const hasHips = valid(23) && valid(24);
-                if (!hasShoulders || !hasHips) return false;
-                const hasLegs = (valid(25) || valid(26)) && (valid(27) || valid(28));
-                return hasLegs;
-            },
-
-            getSkeletonStats: function(l) {
-                if (!l) return { shoulder: false, hip: false, knee: false, ankle: false, minX: 0, maxX: 0, minY: 0, maxY: 0 };
-                const valid = (idx) => CONFIG.isLandmarkPositionValid(l, idx);
-                const shoulder = valid(11) && valid(12);
-                const hip = valid(23) && valid(24);
-                const knee = valid(25) || valid(26);
-                const ankle = valid(27) || valid(28);
-
-                let xs = [], ys = [];
-                [11, 12, 23, 24, 25, 26, 27, 28].forEach(idx => {
-                    if (valid(idx)) {
-                        xs.push(l[idx].x);
-                        ys.push(l[idx].y);
-                    }
-                });
-
-                return {
-                    shoulder, hip, knee, ankle,
-                    minX: xs.length ? Math.min(...xs) : 0,
-                    maxX: xs.length ? Math.max(...xs) : 0,
-                    minY: ys.length ? Math.min(...ys) : 0,
-                    maxY: ys.length ? Math.max(...ys) : 0
-                };
+                return hasShoulders && hasHips;
             },
 
             commands: [
                 { 
-                    text: "舉左手", 
+                    text: "Left arm", 
                     check: (l, playerKey) => {
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
-                        const pState = playerState[playerKey];
-                        const shoulderY = l[11].y;
-                        const wristY = l[15].y;
-                        
-                        const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = (dist(l[11], l[23]) + dist(l[23], l[25]) + dist(l[25], l[27])) || 0.5;
-
-                        const isAboveShoulder = wristY < shoulderY - CONFIG.detection.handRaiseMinDelta;
-                        const hasMovedUp = (pState.commandStartLeftWristY - wristY) >= (CONFIG.detection.handRaiseMinMove * bodyScale);
-
-                        return isAboveShoulder && hasMovedUp;
-                    } 
-                },
-                { 
-                    text: "舉右手", 
-                    check: (l, playerKey) => {
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
                         const pState = playerState[playerKey];
-                        const shoulderY = l[12].y;
-                        const wristY = l[16].y;
-
+                        const shoulderLY = l[11].y;
+                        const wristLY = l[15].y;
+                        const shoulderRY = l[12].y;
+                        const wristRY = l[16].y;
+                        
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = (dist(l[12], l[24]) + dist(l[24], l[26]) + dist(l[26], l[28])) || 0.5;
+                        const bodyScale = dist(l[11], l[23]) || 0.5;
 
-                        const isAboveShoulder = wristY < shoulderY - CONFIG.detection.handRaiseMinDelta;
-                        const hasMovedUp = (pState.commandStartRightWristY - wristY) >= (CONFIG.detection.handRaiseMinMove * bodyScale);
-
-                        return isAboveShoulder && hasMovedUp;
+                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
+                                         ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isRightDown = wristRY >= shoulderRY - CONFIG.detection.handDownTolerance;
+                        return isLeftUp && isRightDown;
                     } 
                 },
                 { 
-                    text: "蹲下",   
-                    check: (l, playerKey = 'p1') => {
-                        if (!CONFIG.isLandmarkPositionValid(l, 23) || !CONFIG.isLandmarkPositionValid(l, 24) || 
-                            !CONFIG.isLandmarkPositionValid(l, 11) || !CONFIG.isLandmarkPositionValid(l, 12)) return false;
+                    text: "Right arm", 
+                    check: (l, playerKey) => {
+                        if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
+                        if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
+                        const pState = playerState[playerKey];
+                        const shoulderLY = l[11].y;
+                        const wristLY = l[15].y;
+                        const shoulderRY = l[12].y;
+                        const wristRY = l[16].y;
 
-                        const hip = { x: (l[23].x + l[24].x) / 2, y: (l[23].y + l[24].y) / 2 };
+                        const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                        const bodyScale = dist(l[12], l[24]) || 0.5;
 
-                        let knee = null, ankle = null;
-                        if (CONFIG.isLandmarkPositionValid(l, 25) && CONFIG.isLandmarkPositionValid(l, 27)) {
-                            knee = { x: l[25].x, y: l[25].y };
-                            ankle = { x: l[27].x, y: l[27].y };
-                        } else if (CONFIG.isLandmarkPositionValid(l, 26) && CONFIG.isLandmarkPositionValid(l, 28)) {
-                            knee = { x: l[26].x, y: l[26].y };
-                            ankle = { x: l[28].x, y: l[28].y };
-                        }
-                        if (!knee || !ankle) return false;
-
-                        const getAngle = (a, b, c) => {
-                            const ab = { x: a.x - b.x, y: a.y - b.y };
-                            const cb = { x: c.x - b.x, y: c.y - b.y };
-                            const dot = ab.x * cb.x + ab.y * cb.y;
-                            const magAB = Math.hypot(ab.x, ab.y);
-                            const magCB = Math.hypot(cb.x, cb.y);
-                            if (magAB === 0 || magCB === 0) return 180;
-                            let rad = Math.acos(Math.max(-1, Math.min(1, dot / (magAB * magCB))));
-                            return rad * (180 / Math.PI);
-                        };
-
-                        const kneeAngle = getAngle(hip, knee, ankle);
-                        return kneeAngle < CONFIG.detection.squatKneeAngleMax;
+                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
+                                          ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isLeftDown = wristLY >= shoulderLY - CONFIG.detection.handDownTolerance;
+                        return isRightUp && isLeftDown;
                     } 
+                },
+                {
+                    text: "Both arms",
+                    check: (l, playerKey) => {
+                        if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
+                        if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
+                        const pState = playerState[playerKey];
+                        const shoulderLY = l[11].y;
+                        const wristLY = l[15].y;
+                        const shoulderRY = l[12].y;
+                        const wristRY = l[16].y;
+
+                        const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                        const bodyScale = dist(l[11], l[23]) || 0.5;
+
+                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
+                                         ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
+                                          ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        return isLeftUp && isRightUp;
+                    }
                 }
             ],
             
@@ -443,41 +390,19 @@
                                   CONFIG.isLandmarkPositionValid(l, 23) && CONFIG.isLandmarkPositionValid(l, 24);   
 
                 if (!isVisible) return false;
-
-                const notCrouching = (l[23].y + l[24].y) / 2 < CONFIG.detection.neutralCrouchMax; 
                 
                 const leftWristReliable = CONFIG.isLandmarkReliable(l, 15);
                 const rightWristReliable = CONFIG.isLandmarkReliable(l, 16);
                 const leftHandsDown = !leftWristReliable || (l[15].y >= l[11].y - tolerance);
                 const rightHandsDown = !rightWristReliable || (l[16].y >= l[12].y - tolerance);
 
-                return notCrouching && leftHandsDown && rightHandsDown;
+                return leftHandsDown && rightHandsDown;
             }
         };
 
         const playerState = {
-            p1: {
-                baseline: { samples: [], hipY: 0, isInitialized: false },
-                squatHistory: [],
-                actionConfirm: 0,
-                lastCenterX: 0.75, // [已修正] P1 在畫面左側，對應攝影機物理座標右側 (0.75)
-                trackingDistance: 0,
-                identityMaintained: true,
-                reactionTime: null,
-                commandStartLeftWristY: 0,
-                commandStartRightWristY: 0
-            },
-            p2: {
-                baseline: { samples: [], hipY: 0, isInitialized: false },
-                squatHistory: [],
-                actionConfirm: 0,
-                lastCenterX: 0.25, // [已修正] P2 在畫面右側，對應攝影機物理座標左側 (0.25)
-                trackingDistance: 0,
-                identityMaintained: true,
-                reactionTime: null,
-                commandStartLeftWristY: 0,
-                commandStartRightWristY: 0
-            }
+            p1: { actionConfirm: 0, lastCenterX: 0.75, commandStartLeftWristY: 0, commandStartRightWristY: 0, reactionTime: null },
+            p2: { actionConfirm: 0, lastCenterX: 0.25, commandStartLeftWristY: 0, commandStartRightWristY: 0, reactionTime: null }
         };
 
         let poseLandmarker = undefined;
@@ -491,6 +416,7 @@
         let roundScored = false;
         let roundId = 0;
         let commandStartTime = 0;
+        let latestPosesSnapshot = []; 
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -504,13 +430,8 @@
         const scoreP2El = document.getElementById('score-p2');
         const msgP1El = document.getElementById('msg-p1');
         const msgP2El = document.getElementById('msg-p2');
-        const debugP1El = document.getElementById('debug-p1');
-        const debugP2El = document.getElementById('debug-p2');
-
-        if (DEBUG) {
-            debugP1El.style.display = 'block';
-            debugP2El.style.display = 'block';
-        }
+        const zoneP1 = document.getElementById('zone-p1');
+        const zoneP2 = document.getElementById('zone-p2');
 
         async function preloadModel() {
             try {
@@ -563,37 +484,46 @@
             roundScored = false;
             commandStartTime = 0;
             
-            playerState.p1.squatHistory = [];
             playerState.p1.actionConfirm = 0;
             playerState.p1.reactionTime = null;
-            playerState.p2.squatHistory = [];
             playerState.p2.actionConfirm = 0;
             playerState.p2.reactionTime = null;
 
             commandDisplay.style.color = "var(--primary-color)";
-            commandDisplay.innerText = "請雙手放下\n維持站好";
+            commandDisplay.innerText = "站直\n手放下";
         }
 
         function startCountdownPhase() {
             const currentRoundId = ++roundId;
             gameState = "COUNTDOWN";
-            playerState.p1.squatHistory = [];
             playerState.p1.actionConfirm = 0;
             playerState.p1.reactionTime = null;
-            playerState.p2.squatHistory = [];
             playerState.p2.actionConfirm = 0;
             playerState.p2.reactionTime = null;
             roundScored = false;
 
             commandDisplay.style.color = "var(--warning-color)";
-            commandDisplay.innerText = "準備...";
+            commandDisplay.innerText = "Ready";
             
             setTimeout(() => {
                 if (!webcamRunning || gameState !== "COUNTDOWN" || roundId !== currentRoundId) return;
+                
+                const { p1Landmarks, p2Landmarks } = updatePlayerTracking(latestPosesSnapshot);
+                
+                if (p1Landmarks) {
+                    playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
+                    playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
+                }
+                if (p2Landmarks) {
+                    playerState.p2.commandStartLeftWristY = p2Landmarks[15] ? p2Landmarks[15].y : 0;
+                    playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
+                }
+
                 const randomCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
                 currentCommand = randomCmd;
-                commandStartTime = performance.now();
+                commandStartTime = performance.now(); 
                 gameState = "PLAYING"; 
+                
                 commandDisplay.style.color = "var(--danger-color)";
                 commandDisplay.innerText = randomCmd.text;
             }, CONFIG.timing.countdownDelay);
@@ -606,15 +536,10 @@
                 if (!pose || !pose[23] || !pose[24]) continue;
                 if (!CONFIG.isLandmarkPositionValid(pose, 23) || !CONFIG.isLandmarkPositionValid(pose, 24)) continue;
                 const centerX = (pose[23].x + pose[24].x) / 2;
-                const centerY = (pose[23].y + pose[24].y) / 2;
-                validPoses.push({ pose, centerX, centerY });
+                validPoses.push({ pose, centerX });
             }
 
             if (validPoses.length === 0) {
-                playerState.p1.trackingDistance = 0;
-                playerState.p2.trackingDistance = 0;
-                playerState.p1.identityMaintained = false;
-                playerState.p2.identityMaintained = false;
                 return { p1Landmarks: null, p2Landmarks: null };
             }
 
@@ -629,44 +554,41 @@
                 
                 if (distToP1 <= distToP2 && distToP1 <= maxTrackingDist) {
                     p1Landmarks = item.pose;
-                    playerState.p1.trackingDistance = distToP1;
-                    playerState.p1.identityMaintained = true;
                     playerState.p1.lastCenterX = item.centerX;
                 } else if (distToP2 < distToP1 && distToP2 <= maxTrackingDist) {
                     p2Landmarks = item.pose;
-                    playerState.p2.trackingDistance = distToP2;
-                    playerState.p2.identityMaintained = true;
                     playerState.p2.lastCenterX = item.centerX;
                 } else {
                     if (item.centerX >= 0.5) {
                         p1Landmarks = item.pose;
-                        playerState.p1.trackingDistance = 0;
-                        playerState.p1.identityMaintained = false;
                         playerState.p1.lastCenterX = item.centerX;
                     } else {
                         p2Landmarks = item.pose;
-                        playerState.p2.trackingDistance = 0;
-                        playerState.p2.identityMaintained = false;
                         playerState.p2.lastCenterX = item.centerX;
                     }
                 }
             } else {
                 validPoses.sort((a, b) => a.centerX - b.centerX);
-                const pA = validPoses[0]; // 畫面右側 (物理座標小，對應 P2)
-                const pB = validPoses[1]; // 畫面左側 (物理座標大，對應 P1)
+                const pA = validPoses[0]; 
+                const pB = validPoses[1]; 
 
-                // 讓 pB 配對 P1，pA 配對 P2
                 p1Landmarks = pB.pose;
                 p2Landmarks = pA.pose;
-                playerState.p1.trackingDistance = Math.abs(pB.centerX - playerState.p1.lastCenterX);
-                playerState.p2.trackingDistance = Math.abs(pA.centerX - playerState.p2.lastCenterX);
-                playerState.p1.identityMaintained = true;
-                playerState.p2.identityMaintained = true;
                 playerState.p1.lastCenterX = pB.centerX;
                 playerState.p2.lastCenterX = pA.centerX;
             }
 
             return { p1Landmarks, p2Landmarks };
+        }
+
+        function triggerWinEffect(winner) {
+            if (winner === "P1") {
+                zoneP1.classList.add('win-effect');
+                setTimeout(() => zoneP1.classList.remove('win-effect'), 1000);
+            } else if (winner === "P2") {
+                zoneP2.classList.add('win-effect');
+                setTimeout(() => zoneP2.classList.remove('win-effect'), 1000);
+            }
         }
 
         async function predictWebcam() {
@@ -684,6 +606,8 @@
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
                 let rawPoses = poseResult.landmarks || [];
+                latestPosesSnapshot = rawPoses; 
+
                 for (const landmarks of rawPoses) {
                     drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, { color: '#00F3FF', lineWidth: 3 });
                     drawingUtils.drawLandmarks(landmarks, { color: '#FF0055', radius: 4 });
@@ -694,31 +618,12 @@
                 const p1InFrame = p1Landmarks && CONFIG.isBodyInFrame(p1Landmarks);
                 const p2InFrame = p2Landmarks && CONFIG.isBodyInFrame(p2Landmarks);
 
-                if (gameState === "PLAYING" && playerState.p1.commandStartLeftWristY === 0 && p1Landmarks) {
-                    playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
-                    playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
-                }
-                if (gameState === "PLAYING" && playerState.p2.commandStartLeftWristY === 0 && p2Landmarks) {
-                    playerState.p2.commandStartLeftWristY = p2Landmarks[15] ? p2Landmarks[15].y : 0;
-                    playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
-                }
-                if (gameState !== "PLAYING") {
-                    if (p1Landmarks) {
-                        playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
-                        playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
-                    }
-                    if (p2Landmarks) {
-                        playerState.p2.commandStartLeftWristY = p2Landmarks[15] ? p2Landmarks[15].y : 0;
-                        playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
-                    }
-                }
-
                 if (!p1Landmarks) {
                     msgP1El.style.display = 'block';
                     msgP1El.innerText = "P1 請入鏡";
                 } else if (!p1InFrame) {
                     msgP1El.style.display = 'block';
-                    msgP1El.innerText = "P1 請完整入鏡";
+                    msgP1El.innerText = "P1 請上半身入鏡";
                 } else {
                     msgP1El.style.display = 'none';
                 }
@@ -728,57 +633,23 @@
                     msgP2El.innerText = "P2 請入鏡";
                 } else if (!p2InFrame) {
                     msgP2El.style.display = 'block';
-                    msgP2El.innerText = "P2 請完整入鏡";
+                    msgP2El.innerText = "P2 請上半身入鏡";
                 } else {
                     msgP2El.style.display = 'none';
                 }
 
                 if (gameState === "WAITING_FOR_NEUTRAL") {
-                    let p1Ready = false;
-                    let p2Ready = false;
-
-                    if (p1Landmarks && p1InFrame && CONFIG.neutralCheck(p1Landmarks)) {
-                        const hipY1 = (p1Landmarks[23].y + p1Landmarks[24].y) / 2;
-                        const b1 = playerState.p1.baseline;
-                        if (!b1.isInitialized) {
-                            b1.samples.push(hipY1);
-                            if (b1.samples.length >= 12) {
-                                b1.samples.sort((a, b) => a - b);
-                                const mid = Math.floor(b1.samples.length / 2);
-                                b1.hipY = b1.samples.length % 2 !== 0 ? b1.samples[mid] : (b1.samples[mid - 1] + b1.samples[mid]) / 2;
-                                b1.isInitialized = true;
-                            }
-                        } else {
-                            b1.hipY = b1.hipY * 0.99 + hipY1 * 0.01;
-                        }
-                        p1Ready = b1.isInitialized;
-                    }
-
-                    if (p2Landmarks && p2InFrame && CONFIG.neutralCheck(p2Landmarks)) {
-                        const hipY2 = (p2Landmarks[23].y + p2Landmarks[24].y) / 2;
-                        const b2 = playerState.p2.baseline;
-                        if (!b2.isInitialized) {
-                            b2.samples.push(hipY2);
-                            if (b2.samples.length >= 12) {
-                                b2.samples.sort((a, b) => a - b);
-                                const mid = Math.floor(b2.samples.length / 2);
-                                b2.hipY = b2.samples.length % 2 !== 0 ? b2.samples[mid] : (b2.samples[mid - 1] + b2.samples[mid]) / 2;
-                                b2.isInitialized = true;
-                            }
-                        } else {
-                            b2.hipY = b2.hipY * 0.99 + hipY2 * 0.01;
-                        }
-                        p2Ready = b2.isInitialized;
-                    }
+                    let p1Ready = p1Landmarks && p1InFrame && CONFIG.neutralCheck(p1Landmarks);
+                    let p2Ready = p2Landmarks && p2InFrame && CONFIG.neutralCheck(p2Landmarks);
 
                     const everyoneReady = p1Landmarks && p2Landmarks && p1InFrame && p2InFrame && p1Ready && p2Ready;
 
                     if (!p1Landmarks || !p2Landmarks) {
                         commandDisplay.style.color = "var(--primary-color)";
-                        commandDisplay.innerText = "等待雙人入鏡";
+                        commandDisplay.innerText = "兩位玩家入鏡";
                     } else if (!p1Ready || !p2Ready) {
                         commandDisplay.style.color = "var(--warning-color)";
-                        commandDisplay.innerText = "等待準備完成";
+                        commandDisplay.innerText = "站直\n手放下";
                     }
 
                     if (everyoneReady) {
@@ -849,17 +720,19 @@
 
                         if (winner === "DRAW") {
                             commandDisplay.style.color = "var(--warning-color)";
-                            commandDisplay.innerText = `平手！\nP1: ${rt1.toFixed(0)}ms / P2: ${rt2.toFixed(0)}ms`;
+                            commandDisplay.innerText = `平手\nP1: ${rt1.toFixed(0)}ms\nP2: ${rt2.toFixed(0)}ms`;
                         } else if (winner === "P1") {
                             scoreP1++;
                             scoreP1El.innerText = scoreP1;
                             commandDisplay.style.color = "var(--success-color)";
-                            commandDisplay.innerText = `P1 得分！\n${rt1.toFixed(0)}ms`;
+                            commandDisplay.innerText = `P1 Win\n${rt1.toFixed(0)}ms`;
+                            triggerWinEffect("P1");
                         } else if (winner === "P2") {
                             scoreP2++;
                             scoreP2El.innerText = scoreP2;
                             commandDisplay.style.color = "var(--success-color)";
-                            commandDisplay.innerText = `P2 得分！\n${rt2.toFixed(0)}ms`;
+                            commandDisplay.innerText = `P2 Win\n${rt2.toFixed(0)}ms`;
+                            triggerWinEffect("P2");
                         }
                         setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
                     }
