@@ -72,6 +72,58 @@
             overflow: hidden;
         }
 
+        /* 畫面震動特效 Class */
+        .screen-shake {
+            animation: shakeAnimation 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shakeAnimation {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-10px, 8px) rotate(-1deg); }
+            40% { transform: translate(10px, -8px) rotate(1deg); }
+            60% { transform: translate(-8px, -6px) rotate(-0.5deg); }
+            80% { transform: translate(8px, 6px) rotate(0.5deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+        }
+
+        /* 全螢幕紅綠交替邊框脈衝特效 */
+        #game-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 8;
+            border: 0px solid transparent;
+            box-shadow: inset 0 0 0 rgba(0,0,0,0);
+            transition: none;
+        }
+
+        #game-container.pulse-effect::after {
+            animation: redGreenPulse 1.0s ease-in-out forwards;
+        }
+
+        @keyframes redGreenPulse {
+            0% {
+                border: 4px solid var(--success-color);
+                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
+            }
+            33% {
+                border: 4px solid var(--danger-color);
+                box-shadow: inset 0 0 50px var(--danger-color), 0 0 40px var(--danger-color);
+            }
+            66% {
+                border: 4px solid var(--success-color);
+                box-shadow: inset 0 0 50px var(--success-color), 0 0 40px var(--success-color);
+            }
+            100% {
+                border: 4px solid transparent;
+                box-shadow: inset 0 0 0 rgba(0,0,0,0), 0 0 0 rgba(0,0,0,0);
+            }
+        }
+
         #webcam-video {
             position: absolute;
             top: 0;
@@ -195,6 +247,29 @@
             letter-spacing: 2px;
             line-height: 1.1;
             white-space: pre-line;
+        }
+
+        /* 字體彈跳與放大動畫 Class */
+        .pop-bounce-anim {
+            animation: popBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes popBounce {
+            0% {
+                transform: scale(0.2);
+                opacity: 0;
+                text-shadow: 0 0 0 rgba(255,255,255,0);
+            }
+            60% {
+                transform: scale(1.3);
+                opacity: 1;
+                text-shadow: 0 0 30px var(--success-color), 0 0 60px var(--success-color);
+            }
+            100% {
+                transform: scale(1.0);
+                opacity: 1;
+                text-shadow: 0 0 20px rgba(255,255,255,0.8);
+            }
         }
 
         #overlay-screen {
@@ -421,6 +496,7 @@
         const canvasCtx = canvasElement.getContext('2d');
         const drawingUtils = new DrawingUtils(canvasCtx);
 
+        const gameContainer = document.getElementById('game-container');
         const commandDisplay = document.getElementById('command-display');
         const scoreP1El = document.getElementById('score-p1');
         const scoreP2El = document.getElementById('score-p2');
@@ -578,6 +654,7 @@
         }
 
         function triggerWinEffect(winner) {
+            // 1. 觸發區域框閃爍特效
             if (winner === "P1") {
                 zoneP1.classList.add('win-effect');
                 setTimeout(() => zoneP1.classList.remove('win-effect'), 1000);
@@ -585,6 +662,20 @@
                 zoneP2.classList.add('win-effect');
                 setTimeout(() => zoneP2.classList.remove('win-effect'), 1000);
             }
+
+            // 2. 觸發全螢幕紅綠交替邊框脈衝
+            gameContainer.classList.add('pulse-effect');
+            setTimeout(() => gameContainer.classList.remove('pulse-effect'), 1000);
+
+            // 3. 觸發畫面高對比動態震動
+            gameContainer.classList.add('screen-shake');
+            setTimeout(() => gameContainer.classList.remove('screen-shake'), 300);
+
+            // 4. 觸發字體彈跳與放大動畫
+            commandDisplay.classList.remove('pop-bounce-anim');
+            void commandDisplay.offsetWidth; // 重置動畫
+            commandDisplay.classList.add('pop-bounce-anim');
+            setTimeout(() => commandDisplay.classList.remove('pop-bounce-anim'), 500);
         }
 
         async function predictWebcam() {
@@ -699,6 +790,7 @@
 
                         if (winner === "DRAW") {
                             commandDisplay.innerText = "平手";
+                            triggerWinEffect("DRAW");
                         } else if (winner === "P1") {
                             scoreP1++;
                             scoreP1El.innerText = scoreP1;
