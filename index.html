@@ -338,16 +338,16 @@
 
         const CONFIG = {
             timing: {
-                countdownDelay: 0, 
-                roundEndDelay: 1000,   
-                neutralToCountdownDelay: 100 
+                countdownDelay: 100,[cite: 2]
+                roundEndDelay: 1000,  [cite: 2]
+                neutralToCountdownDelay: 100[cite: 2]
             },
             detection: {
-                visibilityThreshold: 0.3,      
-                actionConfirmFrames: 2,      
-                handDownTolerance: 0.05,     
-                handRaiseMinDelta: 0.04,
-                handRaiseMinMove: 0.04       
+                visibilityThreshold: 0.3,     [cite: 2]
+                actionConfirmFrames: 2,     [cite: 2]
+                handDownTolerance: 0.05,    [cite: 2]
+                handRaiseMinDelta: 0.04,[cite: 2]
+                handRaiseMinMove: 0.04      [cite: 2]
             },
 
             isLandmarkPositionValid: function(l, index) {
@@ -557,8 +557,6 @@
             playerState.p2.actionConfirm = 0;
             playerState.p2.reactionTime = null;
             roundScored = false;
-
-            commandDisplay.innerText = "Ready";
             
             setTimeout(() => {
                 if (!webcamRunning || gameState !== "COUNTDOWN" || roundId !== currentRoundId) return;
