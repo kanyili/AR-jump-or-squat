@@ -209,9 +209,17 @@
             font-size: 2.2rem;
             font-weight: 900;
             color: var(--primary-color);
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             text-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
             text-align: center;
+        }
+
+        #github-time-info {
+            font-size: 0.9rem;
+            color: var(--warning-color);
+            margin-bottom: 20px;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
         }
 
         .btn-primary {
@@ -264,12 +272,35 @@
 
         <div id="overlay-screen" class="interactive">
             <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
+            <div id="github-time-info">正在取得 GitHub 系統端最後更新時間...</div>
             <button class="btn-primary" id="start-btn" disabled>正在初始化模組...</button>
         </div>
     </div>
 
     <script type="module">
         import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs";
+
+        // 自動取得 GitHub 系統端檔案最後更新時間的範例（若非部署於 GitHub Pages 則顯示無法取得或讀取本地時間）
+        async function fetchGitHubCommitTime() {
+            const timeInfoEl = document.getElementById('github-time-info');
+            try {
+                // 透過 GitHub REST API 取得當前儲存庫最近一次 commit 紀錄
+                const response = await fetch('https://api.github.com/repos/anyili/anyili.github.io/commits?per_page=1');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        const commitDate = new Date(data[0].commit.committer.date);
+                        timeInfoEl.innerText = `GitHub 系統端最後更新時間：${commitDate.toLocaleString('zh-TW')}`;
+                        return;
+                    }
+                }
+                throw new Error('API 回應異常');
+            } catch (err) {
+                // 若受限於跨域或非 GitHub 環境，改顯示抓取當下狀態或提示
+                timeInfoEl.innerText = `GitHub 系統端時間：無法直接讀取（目前為運行環境時間：${new Date().toLocaleString('zh-TW')}）`;
+            }
+        }
+        fetchGitHubCommitTime();
 
         const CONFIG = {
             timing: {
@@ -310,6 +341,10 @@
                 { 
                     text: "Left arm", 
                     check: (l, playerKey) => {
+                        // 修正左右手定義：
+                        // MediaPipe 15 = 人體左手腕，16 = 人體右手腕。
+                        // 當指令要求 "Left arm"（玩家舉起左手），我們要檢查人體左手（15號）是否有向上舉起，
+                        // 同時確保右手（16號）維持放下狀態。
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
                         const pState = playerState[playerKey];
@@ -319,17 +354,21 @@
                         const wristRY = l[16].y;
                         
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = dist(l[12], l[24]) || 0.5;
+                        const bodyScale = dist(l[11], l[23]) || 0.5;
 
-                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
-                                         ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
-                        const isLeftDown = wristLY >= shoulderLY - CONFIG.detection.handDownTolerance;
-                        return isRightUp && isLeftDown;
+                        // 檢查左手向上，右手放下
+                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
+                                         ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isRightDown = wristRY >= shoulderRY - CONFIG.detection.handDownTolerance;
+                        return isLeftUp && isRightDown;
                     } 
                 },
                 { 
                     text: "Right arm", 
                     check: (l, playerKey) => {
+                        // 修正左右手定義：
+                        // 當指令要求 "Right arm"（玩家舉起右手），我們要檢查人體右手（16號）是否有向上舉起，
+                        // 同時確保左手（15號）維持放下狀態。
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
                         const pState = playerState[playerKey];
@@ -339,12 +378,13 @@
                         const wristRY = l[16].y;
 
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = dist(l[11], l[23]) || 0.5;
+                        const bodyScale = dist(l[12], l[24]) || 0.5;
 
-                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
-                                          ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
-                        const isRightDown = wristRY >= shoulderRY - CONFIG.detection.handDownTolerance;
-                        return isLeftUp && isRightDown;
+                        // 檢查右手向上，左手放下
+                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
+                                          ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isLeftDown = wristLY >= shoulderLY - CONFIG.detection.handDownTolerance;
+                        return isRightUp && isLeftDown;
                     } 
                 },
                 {
