@@ -698,16 +698,16 @@
                         }
 
                         if (winner === "DRAW") {
-                            commandDisplay.innerText = `平手\nP1: ${rt1.toFixed(0)}ms\nP2: ${rt2.toFixed(0)}ms`;
+                            commandDisplay.innerText = "平手";
                         } else if (winner === "P1") {
                             scoreP1++;
                             scoreP1El.innerText = scoreP1;
-                            commandDisplay.innerText = `P1 Win\n${rt1.toFixed(0)}ms`;
+                            commandDisplay.innerText = "P1 Win";
                             triggerWinEffect("P1");
                         } else if (winner === "P2") {
                             scoreP2++;
                             scoreP2El.innerText = scoreP2;
-                            commandDisplay.innerText = `P2 Win\n${rt2.toFixed(0)}ms`;
+                            commandDisplay.innerText = "P2 Win";
                             triggerWinEffect("P2");
                         }
                         setTimeout(startNeutralCheckPhase, CONFIG.timing.roundEndDelay);
