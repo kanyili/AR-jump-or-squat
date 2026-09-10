@@ -338,16 +338,16 @@
 
         const CONFIG = {
             timing: {
-                countdownDelay: 100,[cite: 2]
-                roundEndDelay: 1000,  [cite: 2]
-                neutralToCountdownDelay: 100[cite: 2]
+                countdownDelay: 100,
+                roundEndDelay: 1000,   
+                neutralToCountdownDelay: 100 
             },
             detection: {
-                visibilityThreshold: 0.3,     [cite: 2]
-                actionConfirmFrames: 2,     [cite: 2]
-                handDownTolerance: 0.05,    [cite: 2]
-                handRaiseMinDelta: 0.04,[cite: 2]
-                handRaiseMinMove: 0.04      [cite: 2]
+                visibilityThreshold: 0.3,      
+                actionConfirmFrames: 2,      
+                handDownTolerance: 0.05,     
+                handRaiseMinDelta: 0.04,
+                handRaiseMinMove: 0.04       
             },
 
             isLandmarkPositionValid: function(l, index) {
@@ -634,7 +634,6 @@
         }
 
         function triggerWinEffect(winner) {
-            // 1. 僅觸發得分玩家的紅綠交替脈衝特效
             if (winner === "P1") {
                 zoneP1.classList.add('pulse-effect');
                 setTimeout(() => zoneP1.classList.remove('pulse-effect'), 1000);
@@ -650,13 +649,11 @@
                 }, 1000);
             }
 
-            // 2. 觸發畫面高對比動態震動
             gameContainer.classList.add('screen-shake');
             setTimeout(() => gameContainer.classList.remove('screen-shake'), 300);
 
-            // 3. 觸發字體彈跳與放大動畫
             commandDisplay.classList.remove('pop-bounce-anim');
-            void commandDisplay.offsetWidth; // 重置動畫
+            void commandDisplay.offsetWidth; 
             commandDisplay.classList.add('pop-bounce-anim');
             setTimeout(() => commandDisplay.classList.remove('pop-bounce-anim'), 500);
         }
