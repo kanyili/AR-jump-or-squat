@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雙人AR反應速度遊戲</title>
+    <title>雙人AR遊戲</title>
     <style>
         :root {
             --bg-color: #0b0f19;          
@@ -126,23 +126,31 @@
         }
 
         .win-effect {
-            animation: flashTwice 0.8s ease-in-out forwards;
+            animation: flashCustom 1.0s ease-in-out forwards;
         }
 
-        @keyframes flashTwice {
+        @keyframes flashCustom {
             0% { 
                 border-color: var(--border-glow); 
                 box-shadow: none; 
             }
-            25% { 
+            16.67% { 
                 border-color: var(--success-color); 
                 box-shadow: 0 0 25px var(--success-color); 
             }
-            50% { 
+            33.33% { 
                 border-color: var(--border-glow); 
                 box-shadow: none; 
             }
-            75% { 
+            50% { 
+                border-color: var(--success-color); 
+                box-shadow: 0 0 25px var(--success-color); 
+            }
+            66.67% { 
+                border-color: var(--border-glow); 
+                box-shadow: none; 
+            }
+            83.33% { 
                 border-color: var(--success-color); 
                 box-shadow: 0 0 25px var(--success-color); 
             }
@@ -263,7 +271,7 @@
         </div>
 
         <div id="overlay-screen" class="interactive">
-            <h1 class="game-title">雙人 AR 反應速度遊戲</h1>
+            <h1 class="game-title">雙人AR遊戲</h1>
             <button class="btn-primary" id="start-btn" disabled>正在初始化模組...</button>
         </div>
     </div>
@@ -274,7 +282,8 @@
         const CONFIG = {
             timing: {
                 countdownDelay: 1500, 
-                roundEndDelay: 2000   
+                roundEndDelay: 1000,   
+                neutralToCountdownDelay: 100 
             },
             detection: {
                 visibilityThreshold: 0.3,      
@@ -403,6 +412,7 @@
         let roundId = 0;
         let commandStartTime = 0;
         let latestPosesSnapshot = []; 
+        let neutralCountdownTimer = null; 
 
         const startBtn = document.getElementById('start-btn');
         const overlayScreen = document.getElementById('overlay-screen');
@@ -467,6 +477,11 @@
             currentCommand = null;
             roundScored = false;
             commandStartTime = 0;
+            
+            if (neutralCountdownTimer) {
+                clearTimeout(neutralCountdownTimer);
+                neutralCountdownTimer = null;
+            }
             
             playerState.p1.actionConfirm = 0;
             playerState.p1.reactionTime = null;
@@ -565,10 +580,10 @@
         function triggerWinEffect(winner) {
             if (winner === "P1") {
                 zoneP1.classList.add('win-effect');
-                setTimeout(() => zoneP1.classList.remove('win-effect'), 800);
+                setTimeout(() => zoneP1.classList.remove('win-effect'), 1000);
             } else if (winner === "P2") {
                 zoneP2.classList.add('win-effect');
-                setTimeout(() => zoneP2.classList.remove('win-effect'), 800);
+                setTimeout(() => zoneP2.classList.remove('win-effect'), 1000);
             }
         }
 
@@ -611,8 +626,13 @@
                         commandDisplay.innerText = "站直、手放下";
                     }
 
-                    if (everyoneReady) {
-                        startCountdownPhase();
+                    if (everyoneReady && !neutralCountdownTimer) {    
+                        neutralCountdownTimer = setTimeout(() => {        
+                            neutralCountdownTimer = null;        
+                            if (gameState === "WAITING_FOR_NEUTRAL") {            
+                                startCountdownPhase();        
+                            }    
+                        }, CONFIG.timing.neutralToCountdownDelay);
                     }
                 }
 
