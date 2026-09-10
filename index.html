@@ -125,7 +125,6 @@
             transition: all 0.2s ease;
         }
 
-        /* 更改為偵測框閃爍兩下特效 */
         .win-effect {
             animation: flashTwice 0.8s ease-in-out forwards;
         }
@@ -320,12 +319,12 @@
                         const wristRY = l[16].y;
                         
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = dist(l[11], l[23]) || 0.5;
+                        const bodyScale = dist(l[12], l[24]) || 0.5;
 
-                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
-                                         ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
-                        const isRightDown = wristRY >= shoulderRY - CONFIG.detection.handDownTolerance;
-                        return isLeftUp && isRightDown;
+                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
+                                         ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isLeftDown = wristLY >= shoulderLY - CONFIG.detection.handDownTolerance;
+                        return isRightUp && isLeftDown;
                     } 
                 },
                 { 
@@ -340,12 +339,12 @@
                         const wristRY = l[16].y;
 
                         const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        const bodyScale = dist(l[12], l[24]) || 0.5;
+                        const bodyScale = dist(l[11], l[23]) || 0.5;
 
-                        const isRightUp = (wristRY < shoulderRY - CONFIG.detection.handRaiseMinDelta) && 
-                                          ((pState.commandStartRightWristY - wristRY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
-                        const isLeftDown = wristLY >= shoulderLY - CONFIG.detection.handDownTolerance;
-                        return isRightUp && isLeftDown;
+                        const isLeftUp = (wristLY < shoulderLY - CONFIG.detection.handRaiseMinDelta) && 
+                                          ((pState.commandStartLeftWristY - wristLY) >= (CONFIG.detection.handRaiseMinMove * bodyScale));
+                        const isRightDown = wristRY >= shoulderRY - CONFIG.detection.handDownTolerance;
+                        return isLeftUp && isRightDown;
                     } 
                 },
                 {
