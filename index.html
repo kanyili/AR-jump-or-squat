@@ -304,7 +304,7 @@
     <div id="rotate-warning">
         <div class="icon">📱</div>
         <h2>請將手機轉為橫向</h2>
-        <p>本遊戲需使用橫向畫面進行雙人 AR 互動</p>
+        <p>本遊戲需使用橫向畫面進行雙人AR互動</p>
     </div>
 
     <div id="game-container">
@@ -374,7 +374,7 @@
 
             commands: [
                 { 
-                    text: "Left arm", 
+                    texts: ["Left arm", "Not Right arm"],
                     check: (l, playerKey) => {
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
@@ -394,7 +394,7 @@
                     } 
                 },
                 { 
-                    text: "Right arm", 
+                    texts: ["Right arm", "Not Left arm"],
                     check: (l, playerKey) => {
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
@@ -414,7 +414,7 @@
                     } 
                 },
                 {
-                    text: "Both arms",
+                    texts: ["Both arms", "Left arm and Right arm", "Right arm and Left arm"],
                     check: (l, playerKey) => {
                         if (!CONFIG.isLandmarkReliable(l, 15) || !CONFIG.isLandmarkReliable(l, 11)) return false;
                         if (!CONFIG.isLandmarkReliable(l, 16) || !CONFIG.isLandmarkReliable(l, 12)) return false;
@@ -572,12 +572,13 @@
                     playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
                 }
 
-                const randomCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
-                currentCommand = randomCmd;
+                const rawCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
+                const randomText = rawCmd.texts[Math.floor(Math.random() * rawCmd.texts.length)];
+                currentCommand = { text: randomText, check: rawCmd.check };
                 commandStartTime = performance.now(); 
                 gameState = "PLAYING"; 
                 
-                commandDisplay.innerText = randomCmd.text;
+                commandDisplay.innerText = currentCommand.text;
             }, CONFIG.timing.countdownDelay);
         }
 
