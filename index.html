@@ -77,7 +77,6 @@
             box-sizing: border-box;
         }
 
-        /* 畫面震動特效 Class */
         .screen-shake {
             animation: shakeAnimation 0.3s cubic-bezier(.36,.07,.19,.97) both;
         }
@@ -147,7 +146,6 @@
             transition: all 0.2s ease;
         }
 
-        /* 玩家區域紅綠交替脈衝特效內縮框 */
         .player-zone::after {
             content: '';
             position: absolute;
@@ -231,7 +229,6 @@
             white-space: pre-line;
         }
 
-        /* 字體彈跳與放大動畫 Class */
         .pop-bounce-anim {
             animation: popBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
@@ -304,7 +301,7 @@
     <div id="rotate-warning">
         <div class="icon">📱</div>
         <h2>請將手機轉為橫向</h2>
-        <p>本遊戲需使用橫向畫面進行雙人AR互動</p>
+        <p>本遊戲需使用橫向畫面進行雙人 AR 互動</p>
     </div>
 
     <div id="game-container">
@@ -467,6 +464,7 @@
         let currentCommand = null; 
         let roundScored = false;
         let roundId = 0;
+        let isFirstRound = true; // 追蹤是否為第一回合
         let commandStartTime = 0;
         let latestPosesSnapshot = []; 
         let neutralCountdownTimer = null; 
@@ -558,28 +556,52 @@
             playerState.p2.reactionTime = null;
             roundScored = false;
             
-            setTimeout(() => {
-                if (!webcamRunning || gameState !== "COUNTDOWN" || roundId !== currentRoundId) return;
+            // 如果是第一回合，進行 3 秒倒數；後續回合則直接開始
+            if (isFirstRound) {
+                let count = 3;
+                commandDisplay.innerText = count;
                 
-                const { p1Landmarks, p2Landmarks } = updatePlayerTracking(latestPosesSnapshot);
-                
-                if (p1Landmarks) {
-                    playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
-                    playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
-                }
-                if (p2Landmarks) {
-                    playerState.p2.commandStartLeftWristY = p2Landmarks[15] ? p2Landmarks[15].y : 0;
-                    playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
-                }
+                const countdownInterval = setInterval(() => {
+                    if (!webcamRunning || gameState !== "COUNTDOWN" || roundId !== currentRoundId) {
+                        clearInterval(countdownInterval);
+                        return;
+                    }
+                    count--;
+                    if (count > 0) {
+                        commandDisplay.innerText = count;
+                    } else {
+                        clearInterval(countdownInterval);
+                        isFirstRound = false; // 第一回合倒數結束，之後不需再倒數
+                        activateCommand();
+                    }
+                }, 1000);
+            } else {
+                setTimeout(() => {
+                    if (!webcamRunning || gameState !== "COUNTDOWN" || roundId !== currentRoundId) return;
+                    activateCommand();
+                }, CONFIG.timing.countdownDelay);
+            }
+        }
 
-                const rawCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
-                const randomText = rawCmd.texts[Math.floor(Math.random() * rawCmd.texts.length)];
-                currentCommand = { text: randomText, check: rawCmd.check };
-                commandStartTime = performance.now(); 
-                gameState = "PLAYING"; 
-                
-                commandDisplay.innerText = currentCommand.text;
-            }, CONFIG.timing.countdownDelay);
+        function activateCommand() {
+            const { p1Landmarks, p2Landmarks } = updatePlayerTracking(latestPosesSnapshot);
+            
+            if (p1Landmarks) {
+                playerState.p1.commandStartLeftWristY = p1Landmarks[15] ? p1Landmarks[15].y : 0;
+                playerState.p1.commandStartRightWristY = p1Landmarks[16] ? p1Landmarks[16].y : 0;
+            }
+            if (p2Landmarks) {
+                playerState.p2.commandStartLeftWristY = p2Landmarks[15] ? p2Landmarks[15].y : 0;
+                playerState.p2.commandStartRightWristY = p2Landmarks[16] ? p2Landmarks[16].y : 0;
+            }
+
+            const rawCmd = CONFIG.commands[Math.floor(Math.random() * CONFIG.commands.length)];
+            const randomText = rawCmd.texts[Math.floor(Math.random() * rawCmd.texts.length)];
+            currentCommand = { text: randomText, check: rawCmd.check };
+            commandStartTime = performance.now(); 
+            gameState = "PLAYING"; 
+            
+            commandDisplay.innerText = currentCommand.text;
         }
 
         function updatePlayerTracking(poses) {
